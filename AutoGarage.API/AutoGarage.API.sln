@@ -5,6 +5,8 @@ VisualStudioVersion = 17.11.35303.130
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutoGarage.API", "AutoGarage.API\AutoGarage.API.csproj", "{5B0660B0-DC8E-462D-8778-C81E47096AB8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutoGarage.DAL", "AutoGarage.DAL\AutoGarage.DAL.csproj", "{8C9D3849-E1FB-41BC-80B1-F7CA68056C6B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{5B0660B0-DC8E-462D-8778-C81E47096AB8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5B0660B0-DC8E-462D-8778-C81E47096AB8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5B0660B0-DC8E-462D-8778-C81E47096AB8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8C9D3849-E1FB-41BC-80B1-F7CA68056C6B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8C9D3849-E1FB-41BC-80B1-F7CA68056C6B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8C9D3849-E1FB-41BC-80B1-F7CA68056C6B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8C9D3849-E1FB-41BC-80B1-F7CA68056C6B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
