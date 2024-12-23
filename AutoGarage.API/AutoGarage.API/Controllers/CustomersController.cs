@@ -62,6 +62,28 @@ namespace AutoGarage.API.Controllers
             return customer.FirstOrDefault();  // Since GetAsync returns a list, return the first element
         }
 
+        [HttpGet("licenseplate/{licensePlate}")]
+        public async Task<ActionResult<Customer>> GetCustomerByLicensePlateAsync(string licensePlate)
+        {
+            // Fetch customer by license plate
+            var customer = await _uow.CustomerRepository.GetAsync(
+                filter: c => c.LicensePlate.Equals(licensePlate, StringComparison.OrdinalIgnoreCase),
+                orderBy: null,
+                includes: new Expression<Func<Customer, object>>[]
+                {
+                    c => c.Appointments    // Include Appointments
+                }
+            );
+
+            if (customer == null || !customer.Any())
+            {
+                return NotFound();  // Return NotFound if no customer matches the license plate
+            }
+
+            return customer.FirstOrDefault();  // Return the first matching customer
+        }
+
+
 
         // PUT: api/Customers/5
         [HttpPut("{id}")]

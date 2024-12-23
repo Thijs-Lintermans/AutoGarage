@@ -39,6 +39,44 @@ namespace AutoGarage.API.Controllers
             return Ok(timeSlots); // Return the result directly
         }
 
+        // GET: api/TimeSlots/available/{date}
+        [HttpGet("available/{date}")]
+        public async Task<ActionResult<IEnumerable<TimeSlot>>> GetAvailableTimeSlotsByDate(DateOnly date)
+        {
+            // Fetch all time slots with appointments on that date
+            var timeSlotsWithAppointments = await _uow.TimeSlotRepository.GetAsync(
+                filter: t => t.Appointments.Any(a => a.AppointmentDate == date), // Filter time slots with appointments on the given date
+                orderBy: null,   // No specific ordering applied
+                includes: new Expression<Func<TimeSlot, object>>[]
+                {
+            t => t.Appointments    // Include Appointments for each TimeSlot
+                }
+            );
+
+            // Get all time slots
+            var allTimeSlots = await _uow.TimeSlotRepository.GetAsync(
+                filter: null,    // No filter
+                orderBy: null,   // No ordering
+                includes: new Expression<Func<TimeSlot, object>>[]
+                {
+            t => t.Appointments    // Include Appointments
+                }
+            );
+
+            // Filter out time slots that already have appointments on the specified date
+            var availableTimeSlots = allTimeSlots.Where(t => !t.Appointments.Any(a => a.AppointmentDate == date)).ToList();
+
+            if (availableTimeSlots.Any())
+            {
+                return Ok(availableTimeSlots); // Return available time slots for the given date
+            }
+            else
+            {
+                return NotFound("No available time slots found for this date.");
+            }
+        }
+
+
         // GET: api/TimeSlots/5
         [HttpGet("{id}")]
         public async Task<ActionResult<TimeSlot>> GetTimeSlot(int id)

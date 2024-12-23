@@ -1,10 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace AutoGarage.DAL.Models
+namespace CoreBot.Models
 {
     public class Appointment
     {
@@ -17,7 +13,5 @@ namespace AutoGarage.DAL.Models
         public TimeSlot? TimeSlot { get; set; }
         public RepairType? RepairType { get; set; }
         public Customer? Customer { get; set; }
-
-
     }
 }
