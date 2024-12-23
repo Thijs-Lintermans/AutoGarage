@@ -39,29 +39,36 @@ namespace AutoGarage.API.Controllers
             return Ok(timeSlots); // Return the result directly
         }
 
+        // GET: api/TimeSlots/available/{date}
         [HttpGet("available/{date}")]
-        public async Task<ActionResult<IEnumerable<TimeSlot>>> GetAvailableTimeSlotsByDate(DateTime date)
+        public async Task<ActionResult<IEnumerable<TimeSlot>>> GetAvailableTimeSlots(DateTime date)
         {
-            // Normalize the DateTime to just compare the date portion
-            var dateOnly = date.Date;
-
-            var availableTimeSlots = await _uow.TimeSlotRepository.GetAsync(
-                filter: t => !t.Appointments.Any(a => a.AppointmentDate.Date == dateOnly), // Compare only the date portion
-                orderBy: null, // No specific ordering
-                includes: new Expression<Func<TimeSlot, object>>[]
-                {
-                    t => t.Appointments // Include appointments if necessary
-                }
+            // Get all appointments for the provided date
+            var appointmentsForDate = await _uow.AppointmentRepository.GetAsync(
+                filter: a => a.AppointmentDate.Date == date.Date,  // Filter appointments by date
+                orderBy: null,  // No specific ordering
+                includes: null   // No need to include any related entities
             );
 
-            if (availableTimeSlots.Any())
-            {
-                return Ok(availableTimeSlots); // Return available time slots
-            }
-            else
-            {
-                return NotFound("No available time slots found for this date."); // Return NotFound if no available slots
-            }
+            // Get all time slots (we can get them without filtering by appointments)
+            var allTimeSlots = await _uow.TimeSlotRepository.GetAsync(
+                filter: null,   // No filter applied
+                orderBy: null,  // No specific ordering
+                includes: null  // No need to include appointments here
+            );
+
+            // Get the TimeSlotIds that already have appointments
+            var occupiedTimeSlotIds = appointmentsForDate
+                .Select(a => a.TimeSlotId)  // Extract TimeSlotIds from the appointments
+                .Distinct()  // Ensure each TimeSlotId is unique
+                .ToList();
+
+            // Filter out time slots that already have appointments on the provided date
+            var availableTimeSlots = allTimeSlots
+                .Where(t => !occupiedTimeSlotIds.Contains(t.TimeSlotId))  // Exclude occupied time slots
+                .ToList();
+
+            return Ok(availableTimeSlots);  // Return the available time slots
         }
 
 
