@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using AutoGarage.DAL.Models;
 using Parkeerwachter.DAL;
 using AutoGarage.DAL.Repositories;
+using System.Linq.Expressions;
 
 namespace AutoGarage.API.Controllers
 {
@@ -24,25 +25,50 @@ namespace AutoGarage.API.Controllers
 
         // GET: api/Appointments
         [HttpGet]
+        // GET: api/Appointments
+        [HttpGet]
         public async Task<ActionResult<IEnumerable<Appointment>>> GetAppointments()
         {
-            var appointments = await _uow.AppointmentRepository.GetAllAsync();
+            // Use GetAsync with includes for RepairType, TimeSlot, and Customer
+            var appointments = await _uow.AppointmentRepository.GetAsync(
+                filter: null,    // No specific filter applied (you can add one if needed)
+                orderBy: null,   // No specific ordering applied (you can add one if needed)
+                includes: new Expression<Func<Appointment, object>>[]
+                {
+                    a => a.RepairType,  // Include RepairType
+                    a => a.TimeSlot,    // Include TimeSlot
+                    a => a.Customer     // Include Customer
+                }
+            );
+
             return appointments.ToList();
         }
+
+
 
         // GET: api/Appointments/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Appointment>> GetAppointment(int id)
         {
-            var appointment = await _uow.AppointmentRepository.FindAsync(id);
+            var appointment = await _uow.AppointmentRepository.GetAsync(
+                filter: a => a.AppointmentId == id,    // Filter by AppointmentId
+                orderBy: null,   // No specific ordering applied
+                includes: new Expression<Func<Appointment, object>>[]
+                {
+                    a => a.RepairType,  // Include RepairType
+                    a => a.TimeSlot,    // Include TimeSlot
+                    a => a.Customer     // Include Customer
+                }
+            );
 
-            if (appointment == null)
+            if (appointment == null || !appointment.Any())  // Check if the result is null or empty
             {
                 return NotFound();
             }
 
-            return appointment;
+            return appointment.FirstOrDefault();  // Since GetAsync returns a list, return the first element
         }
+
 
         // PUT: api/Appointments/5
         // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
