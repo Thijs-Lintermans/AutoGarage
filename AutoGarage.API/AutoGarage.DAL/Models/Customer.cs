@@ -15,6 +15,6 @@ namespace AutoGarage.DAL.Models
         public string PhoneNumber { get; set; }
         public string LicensePlate { get; set; }
 
-        public ICollection<Appointment> Appointments { get; set; }
+        public ICollection<Appointment>? Appointments { get; set; }
     }
 }
