@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using AutoGarage.DAL.Models;
 using Parkeerwachter.DAL;
 using AutoGarage.DAL.Repositories;
+using System.Linq.Expressions;
 
 namespace AutoGarage.API.Controllers
 {
@@ -26,7 +27,15 @@ namespace AutoGarage.API.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<RepairType>>> GetRepairTypes()
         {
-            var repairTypes = await _uow.RepairTypeRepository.GetAllAsync(); // Use unit of work's repository
+            var repairTypes = await _uow.RepairTypeRepository.GetAsync(
+                filter: null,    // No filter applied
+                orderBy: null,   // No specific ordering applied
+                includes: new Expression<Func<RepairType, object>>[]
+                {
+            r => r.Appointments    // Include Appointments for each repair type
+                }
+            );
+
             return Ok(repairTypes); // Return the result directly
         }
 
@@ -34,14 +43,23 @@ namespace AutoGarage.API.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<RepairType>> GetRepairType(int id)
         {
-            var repairType = await _uow.RepairTypeRepository.FindAsync(id); // Use unit of work's repository
+            var repairType = await _uow.RepairTypeRepository.GetAsync(
+                filter: r => r.RepairTypeId == id, // Filter by the repair type ID
+                orderBy: null,                    // No ordering needed
+                includes: new Expression<Func<RepairType, object>>[]
+                {
+                    r => r.Appointments    // Include Appointments for this specific repair type
+                }
+            );
 
-            if (repairType == null)
+            var result = repairType.FirstOrDefault(); // Since GetAsync returns IEnumerable, we use FirstOrDefault to get the single entity
+
+            if (result == null)
             {
                 return NotFound();
             }
 
-            return Ok(repairType); // Return the repair type if found
+            return Ok(result); // Return the repair type with its appointments
         }
 
         // PUT: api/RepairTypes/5

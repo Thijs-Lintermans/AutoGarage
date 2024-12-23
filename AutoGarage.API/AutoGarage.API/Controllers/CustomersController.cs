@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using AutoGarage.DAL.Models;
 using Parkeerwachter.DAL;
 using AutoGarage.DAL.Repositories;
+using System.Linq.Expressions;
 
 namespace AutoGarage.API.Controllers
 {
@@ -26,23 +27,41 @@ namespace AutoGarage.API.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Customer>>> GetCustomers()
         {
-            var customers = await _uow.CustomerRepository.GetAllAsync(); // Use unit of work's repository
-            return customers.ToList();
+            var customers = await _uow.CustomerRepository.GetAsync(
+                filter: null,    // No specific filter applied (you can add one if needed)
+                orderBy: null,   // No specific ordering applied (you can add one if needed)
+                includes: new Expression<Func<Customer, object>>[]
+                {
+            c => c.Appointments    // Include Appointments for each customer
+                }
+            );
+
+            return customers.ToList();  // Return the list of customers with included appointments
         }
 
+
+        // GET: api/Customers/5
         // GET: api/Customers/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Customer>> GetCustomer(int id)
         {
-            var customer = await _uow.CustomerRepository.FindAsync(id); // Use unit of work's repository
+            var customer = await _uow.CustomerRepository.GetAsync(
+                filter: c => c.CustomerId == id,    // Filter by CustomerId
+                orderBy: null,   // No specific ordering applied
+                includes: new Expression<Func<Customer, object>>[]
+                {
+                    c => c.Appointments    // Include Appointments
+                }
+            );
 
-            if (customer == null)
+            if (customer == null || !customer.Any())  // Check if the result is null or empty
             {
                 return NotFound();
             }
 
-            return customer;
+            return customer.FirstOrDefault();  // Since GetAsync returns a list, return the first element
         }
+
 
         // PUT: api/Customers/5
         [HttpPut("{id}")]

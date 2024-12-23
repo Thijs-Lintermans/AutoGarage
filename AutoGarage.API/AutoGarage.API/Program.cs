@@ -2,8 +2,18 @@ using AutoGarage.DAL;
 using AutoGarage.DAL.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Parkeerwachter.DAL;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Configure JSON serializer settings globally
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.Preserve;
+        options.JsonSerializerOptions.MaxDepth = 64;
+    });
 
 // Add services to the container.
 var connectionString

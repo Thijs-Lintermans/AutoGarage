@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using AutoGarage.DAL.Models;
 using Parkeerwachter.DAL;
 using AutoGarage.DAL.Repositories;
+using System.Linq.Expressions;
 
 namespace AutoGarage.API.Controllers
 {
@@ -26,7 +27,15 @@ namespace AutoGarage.API.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<TimeSlot>>> GetTimeSlots()
         {
-            var timeSlots = await _uow.TimeSlotRepository.GetAllAsync(); // Use unit of work's repository
+            var timeSlots = await _uow.TimeSlotRepository.GetAsync(
+                filter: null,    // No filter applied
+                orderBy: null,   // No specific ordering applied
+                includes: new Expression<Func<TimeSlot, object>>[]
+                {
+                    t => t.Appointments    // Include Appointments for each TimeSlot
+                }
+            );
+
             return Ok(timeSlots); // Return the result directly
         }
 
@@ -34,15 +43,25 @@ namespace AutoGarage.API.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<TimeSlot>> GetTimeSlot(int id)
         {
-            var timeSlot = await _uow.TimeSlotRepository.FindAsync(id); // Use unit of work's repository
+            var timeSlot = await _uow.TimeSlotRepository.GetAsync(
+                filter: t => t.TimeSlotId == id, // Filter by the TimeSlotId
+                orderBy: null,                   // No ordering needed
+                includes: new Expression<Func<TimeSlot, object>>[]
+                {
+                    t => t.Appointments    // Include Appointments for this specific TimeSlot
+                }
+            );
 
-            if (timeSlot == null)
+            var result = timeSlot.FirstOrDefault(); // Since GetAsync returns IEnumerable, we use FirstOrDefault to get the single entity
+
+            if (result == null)
             {
                 return NotFound();
             }
 
-            return Ok(timeSlot); // Return the time slot if found
+            return Ok(result); // Return the TimeSlot with its appointments
         }
+
 
         // PUT: api/TimeSlots/5
         [HttpPut("{id}")]
