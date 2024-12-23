@@ -70,7 +70,7 @@ namespace AutoGarage.API.Controllers
                 orderBy: null,
                 includes: new Expression<Func<Customer, object>>[]
                 {
-            c => c.Appointments    // Include Appointments
+                    c => c.Appointments    // Include Appointments
                 }
             );
 

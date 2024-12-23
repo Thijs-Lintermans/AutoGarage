@@ -50,7 +50,7 @@ namespace AutoGarage.API.Controllers
                 orderBy: null,   // No specific ordering applied
                 includes: new Expression<Func<TimeSlot, object>>[]
                 {
-             t => t.Appointments    // Include Appointments for each TimeSlot
+                     t => t.Appointments    // Include Appointments for each TimeSlot
                 }
             );
 
@@ -60,7 +60,7 @@ namespace AutoGarage.API.Controllers
                 orderBy: null,   // No ordering
                 includes: new Expression<Func<TimeSlot, object>>[]
                 {
-             t => t.Appointments    // Include Appointments
+                    t => t.Appointments    // Include Appointments
                 }
             );
 
