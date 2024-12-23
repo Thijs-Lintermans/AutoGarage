@@ -41,7 +41,6 @@ namespace AutoGarage.API.Controllers
 
 
         // GET: api/Customers/5
-        // GET: api/Customers/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Customer>> GetCustomer(int id)
         {
@@ -67,11 +66,11 @@ namespace AutoGarage.API.Controllers
         {
             // Fetch customer by license plate
             var customer = await _uow.CustomerRepository.GetAsync(
-                filter: c => c.LicensePlate.Equals(licensePlate, StringComparison.OrdinalIgnoreCase),
+                filter: c => c.LicensePlate == licensePlate,
                 orderBy: null,
                 includes: new Expression<Func<Customer, object>>[]
                 {
-                    c => c.Appointments    // Include Appointments
+            c => c.Appointments    // Include Appointments
                 }
             );
 
@@ -82,8 +81,6 @@ namespace AutoGarage.API.Controllers
 
             return customer.FirstOrDefault();  // Return the first matching customer
         }
-
-
 
         // PUT: api/Customers/5
         [HttpPut("{id}")]

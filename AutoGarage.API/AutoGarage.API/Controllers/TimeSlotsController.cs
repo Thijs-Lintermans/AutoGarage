@@ -39,6 +39,7 @@ namespace AutoGarage.API.Controllers
             return Ok(timeSlots); // Return the result directly
         }
 
+
         // GET: api/TimeSlots/available/{date}
         [HttpGet("available/{date}")]
         public async Task<ActionResult<IEnumerable<TimeSlot>>> GetAvailableTimeSlotsByDate(DateOnly date)
@@ -49,7 +50,7 @@ namespace AutoGarage.API.Controllers
                 orderBy: null,   // No specific ordering applied
                 includes: new Expression<Func<TimeSlot, object>>[]
                 {
-            t => t.Appointments    // Include Appointments for each TimeSlot
+             t => t.Appointments    // Include Appointments for each TimeSlot
                 }
             );
 
@@ -59,7 +60,7 @@ namespace AutoGarage.API.Controllers
                 orderBy: null,   // No ordering
                 includes: new Expression<Func<TimeSlot, object>>[]
                 {
-            t => t.Appointments    // Include Appointments
+             t => t.Appointments    // Include Appointments
                 }
             );
 
