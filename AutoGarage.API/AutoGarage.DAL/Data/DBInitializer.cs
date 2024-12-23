@@ -83,22 +83,23 @@ namespace AutoGarage.DAL
             context.SaveChanges();
 
             context.Appointments.AddRange(
-                 new Appointment
-                 {
-                     AppointmentDate = new DateOnly(2024, 10, 22), // Example date
-                     TimeSlotId = context.TimeSlots.First().TimeSlotId, // First available time slot
-                     RepairTypeId = context.RepairTypes.First().RepairTypeId, // First repair type
-                     CustomerId = context.Customers.First().CustomerId
-                 },
-                 new Appointment
-                 {
-                     AppointmentDate = new DateOnly(2024, 10, 22), // Example date
-                     TimeSlotId = context.TimeSlots.Skip(1).First().TimeSlotId, // Second available time slot
-                     RepairTypeId = context.RepairTypes.Skip(1).First().RepairTypeId, // Second repair type
-                     CustomerId = context.Customers.Skip(1).First().CustomerId
-                 }
-             );
+                new Appointment
+                {
+                    AppointmentDate = new DateTime(2024, 10, 22), // Convert DateOnly to DateTime
+                    TimeSlotId = context.TimeSlots.First().TimeSlotId,
+                    RepairTypeId = context.RepairTypes.First().RepairTypeId,
+                    CustomerId = context.Customers.First().CustomerId
+                },
+                new Appointment
+                {
+                    AppointmentDate = new DateTime(2024, 10, 22), // Convert DateOnly to DateTime
+                    TimeSlotId = context.TimeSlots.Skip(1).First().TimeSlotId,
+                    RepairTypeId = context.RepairTypes.Skip(1).First().RepairTypeId,
+                    CustomerId = context.Customers.Skip(1).First().CustomerId
+                }
+            );
             context.SaveChanges();
+
         }
     }
 }

@@ -39,17 +39,18 @@ namespace AutoGarage.API.Controllers
             return Ok(timeSlots); // Return the result directly
         }
 
-        // GET: api/TimeSlots/available/{date}
         [HttpGet("available/{date}")]
-        public async Task<ActionResult<IEnumerable<TimeSlot>>> GetAvailableTimeSlotsByDate(DateOnly date)
+        public async Task<ActionResult<IEnumerable<TimeSlot>>> GetAvailableTimeSlotsByDate(DateTime date)
         {
-            // Fetch available time slots (those without appointments on the given date)
+            // Normalize the DateTime to just compare the date portion
+            var dateOnly = date.Date;
+
             var availableTimeSlots = await _uow.TimeSlotRepository.GetAsync(
-                filter: t => !t.Appointments.Any(a => a.AppointmentDate == date), // Exclude time slots with appointments on the specified date
+                filter: t => !t.Appointments.Any(a => a.AppointmentDate.Date == dateOnly), // Compare only the date portion
                 orderBy: null, // No specific ordering
                 includes: new Expression<Func<TimeSlot, object>>[]
                 {
-            t => t.Appointments // Include appointments
+                    t => t.Appointments // Include appointments if necessary
                 }
             );
 
@@ -62,6 +63,7 @@ namespace AutoGarage.API.Controllers
                 return NotFound("No available time slots found for this date."); // Return NotFound if no available slots
             }
         }
+
 
 
 

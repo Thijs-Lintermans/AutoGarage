@@ -9,7 +9,7 @@ namespace AutoGarage.DAL.Models
     public class Appointment
     {
         public int AppointmentId { get; set; }
-        public DateOnly AppointmentDate { get; set; }
+        public DateTime AppointmentDate { get; set; }
         public int TimeSlotId { get; set; }
         public int RepairTypeId { get; set; }
         public int CustomerId { get; set; }
