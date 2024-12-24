@@ -32,7 +32,7 @@ namespace AutoGarage.API.Controllers
                 orderBy: null,   // No specific ordering applied
                 includes: new Expression<Func<RepairType, object>>[]
                 {
-            r => r.Appointments    // Include Appointments for each repair type
+                    r => r.Appointments    // Include Appointments for each repair type
                 }
             );
 
