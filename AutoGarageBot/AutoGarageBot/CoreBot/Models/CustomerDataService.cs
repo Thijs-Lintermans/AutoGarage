@@ -1,8 +1,13 @@
 ﻿using CoreBot.Services;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Bot.Builder;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Threading.Tasks;
+using static System.Net.WebRequestMethods;
 
 namespace CoreBot.Models
 {
@@ -12,19 +17,27 @@ namespace CoreBot.Models
         {
             return await ApiService<List<Customer>>.GetAsync($"customers");
         }
+
         public static async Task<Customer> GetCustomerByLicenseplateAsync(string licensePlate)
         {
             try
             {
-                // Call the API endpoint for customer lookup by license plate
-                var customer = await ApiService<Customer>.GetAsync($"customers/licenseplate/{licensePlate}");
+                var response = await ApiService<Customer>.GetAsync($"customers/licenseplate/{licensePlate}");
 
-                return customer;  // Return the found customer (or null if not found)
+                // Check for 404 status and handle silently
+                if (response == null) // or response.StatusCode == HttpStatusCode.NotFound
+                {
+                    // Return null if customer not found
+                    return null;
+                }
+
+                return response;
             }
-            catch (Exception ex)
+            catch (HttpRequestException ex)
             {
-                // Handle any exceptions (such as network errors, etc.)
-                throw new Exception($"Error fetching customer by license plate: {ex.Message}", ex);
+                // Log other errors silently if needed
+                Console.WriteLine("Request error: " + ex.Message);
+                return null;  // Ensure a return value is provided even if there's an exception
             }
         }
 
@@ -38,6 +51,5 @@ namespace CoreBot.Models
         {
             await ApiService<Customer>.PutAsync($"customers/{customer.CustomerId}", customer);
         }
-
     }
 }

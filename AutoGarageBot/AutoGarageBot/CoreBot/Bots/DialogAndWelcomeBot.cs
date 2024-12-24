@@ -1,5 +1,6 @@
 ﻿// Generated with CoreBot .NET Template version v4.22.0
 
+using CoreBot.Helpers;
 using Microsoft.Bot.Builder;
 using Microsoft.Bot.Builder.Dialogs;
 using Microsoft.Bot.Schema;
@@ -7,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.IO;
+using System.Net.Mail;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -28,29 +30,10 @@ namespace CoreBot.Bots
                 // To learn more about Adaptive Cards, see https://aka.ms/msbot-adaptivecards for more details.
                 if (member.Id != turnContext.Activity.Recipient.Id)
                 {
-                    var welcomeCard = CreateAdaptiveCardAttachment();
-                    var response = MessageFactory.Attachment(welcomeCard);
-                    await turnContext.SendActivityAsync(response, cancellationToken);
+                    var attachment = CardHelper.CreateCardAttachment("welcomeCard");
+                    var activity = MessageFactory.Attachment(attachment);
+                    await turnContext.SendActivityAsync(activity, cancellationToken);
                     await Dialog.RunAsync(turnContext, ConversationState.CreateProperty<DialogState>("DialogState"), cancellationToken);
-                }
-            }
-        }
-
-        // Load attachment from embedded resource.
-        private Attachment CreateAdaptiveCardAttachment()
-        {
-            var cardResourcePath = "CoreBot.Cards.welcomeCard.json";
-
-            using (var stream = GetType().Assembly.GetManifestResourceStream(cardResourcePath))
-            {
-                using (var reader = new StreamReader(stream))
-                {
-                    var adaptiveCard = reader.ReadToEnd();
-                    return new Attachment()
-                    {
-                        ContentType = "application/vnd.microsoft.card.adaptive",
-                        Content = JsonConvert.DeserializeObject(adaptiveCard, new JsonSerializerSettings { MaxDepth = null }),
-                    };
                 }
             }
         }

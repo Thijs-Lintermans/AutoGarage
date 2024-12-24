@@ -8,7 +8,9 @@ using Microsoft.Bot.Builder;
 using Microsoft.Bot.Builder.Integration.AspNet.Core;
 using Microsoft.Bot.Connector.Authentication;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using System.IO;
 
 namespace CoreBot
 {
@@ -42,7 +44,9 @@ namespace CoreBot
             services.AddSingleton<FlightBookingRecognizer>();
 
             // Register the BookingDialog.
-            services.AddSingleton<BookingDialog>();
+            services.AddSingleton<CustomerInquiryDialog>();
+            services.AddSingleton<OpeningHoursDialog>();
+            services.AddSingleton<RepairTypesDialog>();
 
             // The MainDialog that will be run by the bot.
             services.AddSingleton<MainDialog>();
@@ -68,6 +72,7 @@ namespace CoreBot
                 {
                     endpoints.MapControllers();
                 });
+
 
             // app.UseHttpsRedirection();
         }
