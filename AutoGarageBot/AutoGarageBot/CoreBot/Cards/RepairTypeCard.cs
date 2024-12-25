@@ -20,24 +20,41 @@ namespace CoreBot.Cards
                 {
                     new AdaptiveTextBlock
                     {
-                        Text = "Available Repair Types",
+                        Text = "Please select a repair type from the list below:",
                         Weight = AdaptiveTextWeight.Bolder,
-                        Size = AdaptiveTextSize.Large
+                        Size = AdaptiveTextSize.Large,
+                        Wrap = true
+                    },
+                    new AdaptiveChoiceSetInput
+                    {
+                        Id = "repairType",
+                        Choices = new List<AdaptiveChoice>(),
+                        Style = AdaptiveChoiceInputStyle.Compact, // Dropdown style
+                        IsRequired = true
+                    }
+                },
+                Actions = new List<AdaptiveAction>
+                {
+                    new AdaptiveSubmitAction
+                    {
+                        Title = "Submit",
+                        Data = new { Action = "SelectRepairType" }
                     }
                 }
             };
 
-            // Add a text block for each repair type
+            // Populate dropdown choices
+            var choiceSetInput = (AdaptiveChoiceSetInput)card.Body[1];
             foreach (var repairType in repairTypes)
             {
-                card.Body.Add(new AdaptiveTextBlock
+                choiceSetInput.Choices.Add(new AdaptiveChoice
                 {
-                    Text = $"**{repairType.RepairName}**: {repairType.RepairDescription}",
-                    Wrap = true
+                    Title = repairType.RepairName,
+                    Value = repairType.RepairName
                 });
             }
 
-            // Create the attachment without actions
+            // Create the adaptive card attachment
             var adaptiveCardAttachment = new Attachment
             {
                 ContentType = "application/vnd.microsoft.card.adaptive",

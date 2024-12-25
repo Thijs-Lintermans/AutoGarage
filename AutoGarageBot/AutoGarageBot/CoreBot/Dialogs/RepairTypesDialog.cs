@@ -27,7 +27,7 @@ namespace CoreBot.Dialogs
         private async Task<DialogTurnResult> FirstActStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
             // Show card with repair types
-            var response = MessageFactory.Attachment(await RepairTypeCard.CreateCardAttachmentAsync());
+            var response = MessageFactory.Attachment(await RepairTypeDetailsCard.CreateCardAttachmentAsync());
             await stepContext.Context.SendActivityAsync(response, cancellationToken);
 
             // End the dialog

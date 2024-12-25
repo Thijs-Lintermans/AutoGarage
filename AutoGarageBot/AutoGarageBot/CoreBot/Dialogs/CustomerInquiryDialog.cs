@@ -22,6 +22,7 @@ namespace CoreBot.Dialogs
         private const string EmailStepMsgText = "What is your email address?";
         private const string PhoneStepMsgText = "What is your phone number?";
         private const string ConfirmStepMsgText = "Is this information correct?";
+        private const string RepairTypeStepMsgText = "What type of repair do you need?";
 
         private readonly string EmailDialogID = "EmailDialogID";
         private readonly string PhoneDialogID = "PhoneDialogID";
@@ -29,27 +30,33 @@ namespace CoreBot.Dialogs
         public CustomerInquiryDialog()
             : base(nameof(CustomerInquiryDialog))
         {
+            // Add necessary dialogs
             AddDialog(new TextPrompt(nameof(TextPrompt)));
             AddDialog(new TextPrompt(EmailDialogID, EmailValidation));
             AddDialog(new TextPrompt(PhoneDialogID, PhoneValidation));
             AddDialog(new ChoicePrompt(nameof(ChoicePrompt)));
 
+            // Define waterfall steps
             var waterfallSteps = new WaterfallStep[]
             {
-                LicensePlateStepAsync,
-                LicensePlateCheckStepAsync,
-                NewCustomerDetailsStepAsync,
-                LastNameStepAsync,
-                EmailStepAsync,
-                PhoneStepAsync,
-                ConfirmDetailsStepAsync,
-                FinalConfirmationStepAsync,
+            LicensePlateStepAsync,                   // Step 1: License plate number
+            LicensePlateCheckStepAsync,              // Step 2: Check if customer exists by license plate
+            ConfirmStepAsync,            // Step 3: If customer exists, confirm their details
+            FirstNameStepAsync,                      // Step 4: Ask for first name
+            LastNameStepAsync,                       // Step 5: Ask for last name
+            EmailStepAsync,                          // Step 6: Ask for email
+            PhoneStepAsync,                          // Step 7: Ask for phone number
+            PhoneStepConfirmAsync,                   // Step 8: Confirm phone number
+            ConfirmDetailsStepAsync,                 // Step 9: Confirm details after entering new customer info
+            RepairTypeStepAsync,                     // Step 10: Repair type
             };
 
+            // Add waterfall dialog
             AddDialog(new WaterfallDialog(nameof(WaterfallDialog), waterfallSteps));
             InitialDialogId = nameof(WaterfallDialog);
         }
 
+        // Step 1: Enter license plate number
         private async Task<DialogTurnResult> LicensePlateStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
             var customer = stepContext.Options as Customer ?? new Customer();
@@ -65,7 +72,7 @@ namespace CoreBot.Dialogs
 
         private async Task<DialogTurnResult> LicensePlateCheckStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            var customerInquiryDetails = (Customer)stepContext.Options ?? new Customer();
+            var customerInquiryDetails = stepContext.Options as Customer ?? new Customer();
             customerInquiryDetails.LicensePlate = (string)stepContext.Result;
 
             try
@@ -82,10 +89,17 @@ namespace CoreBot.Dialogs
                     await stepContext.Context.SendActivityAsync(cardActivity, cancellationToken);
 
                     await stepContext.Context.SendActivityAsync(MessageFactory.Text(ConfirmStepMsgText), cancellationToken);
-                    var yesnoList = new List<string> { "Confirm", "Cancel" };
-                    return await ChoicePromptHelper.PromptChoiceAsync(yesnoList, stepContext, cancellationToken);
-                }
 
+                    var yesnoList = new List<string> { "Confirm", "Cancel" };
+                    var promptOptions = new PromptOptions
+                    {
+                        Choices = yesnoList.Select(choice => new Choice { Value = choice }).ToList(),
+                        Prompt = MessageFactory.Text("Is this information correct?")
+                    };
+
+                    // Prompt user for confirmation (Yes/No choice)
+                    return await stepContext.PromptAsync(nameof(ChoicePrompt), promptOptions, cancellationToken);
+                }
 
                 // If no customer found, throw an exception to proceed to registration
                 throw new Exception("Customer not found");
@@ -100,62 +114,65 @@ namespace CoreBot.Dialogs
                 return await stepContext.NextAsync(null, cancellationToken); // Proceed to asking for registration details
             }
         }
-
-        private async Task<DialogTurnResult> NewCustomerDetailsStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        private async Task<DialogTurnResult> ConfirmStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            var customer = (Customer)stepContext.Options;
+            var userChoice = (string)stepContext.Result;
 
-            if (customer.FirstName == null)
+            if (userChoice == "Confirm")
             {
-                var promptMessage = MessageFactory.Text(FirstNameStepMsgText, FirstNameStepMsgText, InputHints.ExpectingInput);
-                return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = promptMessage }, cancellationToken);
+                // Proceed to the next step, for example, repair types selection
+                return await stepContext.ReplaceDialogAsync(nameof(RepairTypeStepAsync), null, cancellationToken);
             }
 
-            return await stepContext.NextAsync(customer.FirstName, cancellationToken);
+            // If the user chooses "Cancel", reset or handle differently
+            return await stepContext.ReplaceDialogAsync(nameof(LicensePlateCheckStepAsync), null, cancellationToken);
         }
 
+
+
+
+
+        // Step 3: New customer details (First Name)
+        private async Task<DialogTurnResult> FirstNameStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            var customer = stepContext.Options as Customer ?? new Customer();
+
+            var promptMessage = MessageFactory.Text(FirstNameStepMsgText);
+            return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = promptMessage }, cancellationToken);
+        }
+
+        // Step 4: Last name
         private async Task<DialogTurnResult> LastNameStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            var customer = (Customer)stepContext.Options;
+            var customer = stepContext.Options as Customer ?? new Customer();
             customer.FirstName = (string)stepContext.Result;
 
-            if (customer.LastName == null)
-            {
-                var promptMessage = MessageFactory.Text(LastNameStepMsgText, LastNameStepMsgText, InputHints.ExpectingInput);
-                return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = promptMessage }, cancellationToken);
-            }
-
-            return await stepContext.NextAsync(customer.LastName, cancellationToken);
+            var promptMessage = MessageFactory.Text(LastNameStepMsgText);
+            return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = promptMessage }, cancellationToken);
         }
 
+        // Step 5: Email
         private async Task<DialogTurnResult> EmailStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            var customer = (Customer)stepContext.Options;
+            var customer = stepContext.Options as Customer ?? new Customer();
             customer.LastName = (string)stepContext.Result;
 
-            if (customer.Mail == null)
-            {
-                var promptMessage = MessageFactory.Text(EmailStepMsgText, EmailStepMsgText, InputHints.ExpectingInput);
-                return await stepContext.PromptAsync(EmailDialogID, new PromptOptions { Prompt = promptMessage }, cancellationToken);
-            }
-
-            return await stepContext.NextAsync(customer.Mail, cancellationToken);
+            var promptMessage = MessageFactory.Text(EmailStepMsgText);
+            return await stepContext.PromptAsync(EmailDialogID, new PromptOptions { Prompt = promptMessage }, cancellationToken);
         }
 
+        // Step 6: Phone number
         private async Task<DialogTurnResult> PhoneStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            var customer = (Customer)stepContext.Options;
+            var customer = stepContext.Options as Customer ?? new Customer();
             customer.Mail = (string)stepContext.Result;
 
-            if (customer.PhoneNumber == null)
-            {
-                var promptMessage = MessageFactory.Text(PhoneStepMsgText, PhoneStepMsgText, InputHints.ExpectingInput);
-                return await stepContext.PromptAsync(PhoneDialogID, new PromptOptions { Prompt = promptMessage }, cancellationToken);
-            }
-
-            return await stepContext.NextAsync(customer.PhoneNumber, cancellationToken);
+            var promptMessage = MessageFactory.Text(PhoneStepMsgText);
+            return await stepContext.PromptAsync(PhoneDialogID, new PromptOptions { Prompt = promptMessage }, cancellationToken);
         }
-        private async Task<DialogTurnResult> ConfirmDetailsStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+
+        // Step 7: Confirm phone number
+        private async Task<DialogTurnResult> PhoneStepConfirmAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
             var customer = (Customer)stepContext.Options;
             customer.PhoneNumber = (string)stepContext.Result;
@@ -176,20 +193,16 @@ namespace CoreBot.Dialogs
             }, cancellationToken);
         }
 
-
-
-
-        private async Task<DialogTurnResult> FinalConfirmationStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        // Step 8: Final confirmation
+        private async Task<DialogTurnResult> ConfirmDetailsStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
             var customer = (Customer)stepContext.Options;
-
             var choice = ((FoundChoice)stepContext.Result).Value;
 
             if (choice == "Confirm")
             {
                 try
                 {
-                    // Save the customer details to your data source
                     await CustomerDataService.InsertCustomerAsync(customer);
                     await stepContext.Context.SendActivityAsync(MessageFactory.Text("Your information has been saved. Thank you!"), cancellationToken);
                 }
@@ -207,6 +220,21 @@ namespace CoreBot.Dialogs
             }
         }
 
+        // Step 9: Repair type selection
+        private async Task<DialogTurnResult> RepairTypeStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            var repairTypes = await RepairTypeDataService.GetRepairTypesAsync();
+            var choices = repairTypes.Select(rt => new Choice { Value = rt.RepairName }).ToList();
+
+            return await stepContext.PromptAsync(nameof(ChoicePrompt), new PromptOptions
+            {
+                Prompt = MessageFactory.Text(RepairTypeStepMsgText),
+                Choices = choices,
+                RetryPrompt = MessageFactory.Text("Please select a valid repair type from the list."),
+            }, cancellationToken);
+        }
+
+        // Email validation
         private async Task<bool> EmailValidation(PromptValidatorContext<string> promptContext, CancellationToken cancellationToken)
         {
             const string EmailValidationError = "The email you entered is not valid, please enter a valid email.";
@@ -220,6 +248,7 @@ namespace CoreBot.Dialogs
             return false;
         }
 
+        // Phone validation
         private async Task<bool> PhoneValidation(PromptValidatorContext<string> promptContext, CancellationToken cancellationToken)
         {
             const string PhoneValidationError = "The phone number is not valid. Please use these formats: \"014 58 03 35\", \"0465 05 32 63\", \"+32 569 32 65 21\", \"+1 586 32 65 02\"";
@@ -233,4 +262,6 @@ namespace CoreBot.Dialogs
             return false;
         }
     }
+
 }
+
