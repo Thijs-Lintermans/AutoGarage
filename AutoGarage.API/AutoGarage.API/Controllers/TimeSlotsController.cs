@@ -16,11 +16,13 @@ namespace AutoGarage.API.Controllers
     [ApiController]
     public class TimeSlotsController : ControllerBase
     {
+        private readonly ILogger<TimeSlotsController> _logger;
         private readonly IUnitOfWork _uow;
 
-        public TimeSlotsController(IUnitOfWork uow)
+        public TimeSlotsController(IUnitOfWork uow, ILogger<TimeSlotsController> logger)
         {
             _uow = uow;
+            _logger = logger;
         }
 
         // GET: api/TimeSlots
@@ -40,36 +42,56 @@ namespace AutoGarage.API.Controllers
         }
 
         // GET: api/TimeSlots/available/{date}
-        [HttpGet("available/{date}")]
+        [HttpGet("{date}")]
         public async Task<ActionResult<IEnumerable<TimeSlot>>> GetAvailableTimeSlots(DateTime date)
         {
-            // Get all appointments for the provided date
-            var appointmentsForDate = await _uow.AppointmentRepository.GetAsync(
-                filter: a => a.AppointmentDate.Date == date.Date,  // Filter appointments by date
-                orderBy: null,  // No specific ordering
-                includes: null   // No need to include any related entities
-            );
+            try
+            {
+                _logger.LogInformation("Fetching appointments for date: {Date}", date);
 
-            // Get all time slots (we can get them without filtering by appointments)
-            var allTimeSlots = await _uow.TimeSlotRepository.GetAsync(
-                filter: null,   // No filter applied
-                orderBy: null,  // No specific ordering
-                includes: null  // No need to include appointments here
-            );
+                // Get appointments for the specific date
+                var appointmentsForDate = await _uow.AppointmentRepository.GetAsync(
+                    filter: a => a.AppointmentDate.Date == date.Date,
+                    orderBy: null,
+                    includes: null
+                );
 
-            // Get the TimeSlotIds that already have appointments
-            var occupiedTimeSlotIds = appointmentsForDate
-                .Select(a => a.TimeSlotId)  // Extract TimeSlotIds from the appointments
-                .Distinct()  // Ensure each TimeSlotId is unique
-                .ToList();
+                // Get all time slots
+                var allTimeSlots = await _uow.TimeSlotRepository.GetAsync(
+                    filter: null,
+                    orderBy: null,
+                    includes: null
+                );
 
-            // Filter out time slots that already have appointments on the provided date
-            var availableTimeSlots = allTimeSlots
-                .Where(t => !occupiedTimeSlotIds.Contains(t.TimeSlotId))  // Exclude occupied time slots
-                .ToList();
+                // Log the number of appointments and time slots
+                _logger.LogInformation("Found {AppointmentCount} appointments for the date {Date}", appointmentsForDate.Count(), date);
+                _logger.LogInformation("Found {TimeSlotCount} time slots.", allTimeSlots.Count());
 
-            return Ok(availableTimeSlots);  // Return the available time slots
+                // Extract occupied time slot IDs
+                var occupiedTimeSlotIds = new HashSet<int>(appointmentsForDate
+                    .Select(a => a.TimeSlotId)
+                    .Distinct()
+                    .ToList());
+
+                // Filter time slots that are not occupied
+                var availableTimeSlots = allTimeSlots
+                    .Where(t => !occupiedTimeSlotIds.Contains(t.TimeSlotId))
+                    .ToList();
+
+                // Log available time slots
+                _logger.LogInformation("Available time slots: {AvailableTimeSlotCount}", availableTimeSlots.Count);
+
+                // Return available time slots
+                return Ok(availableTimeSlots);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while fetching available time slots.");
+                return StatusCode(500, new { message = "An error occurred while processing your request.", error = ex.Message });
+            }
         }
+
+
 
 
 

@@ -14,7 +14,13 @@ namespace CoreBot.Models
 
         public static async Task<List<TimeSlot>> GetTimeSlotsByDateAsync(DateOnly date)
         {
-            return await ApiService<List<TimeSlot>>.GetAsync($"timeslots/available/{date}");
+            // Format the DateOnly object to a string that the API expects(e.g., "yyyy-MM-dd")
+            string formattedDate = date.ToString("yyyy-MM-dd");
+
+            // Make the API call
+            var timeSlots = await ApiService<List<TimeSlot>>.GetAsync($"timeslots/{formattedDate}");
+
+            return timeSlots;
         }
     }
 }
