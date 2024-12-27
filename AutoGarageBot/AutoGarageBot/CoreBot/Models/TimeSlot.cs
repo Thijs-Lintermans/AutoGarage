@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using Newtonsoft.Json;
+using System.Collections.Generic;
 
 namespace CoreBot.Models
 {
@@ -7,6 +8,7 @@ namespace CoreBot.Models
         public int TimeSlotId { get; set; }
         public string StartTime { get; set; }
 
+       
         public ICollection<Appointment>? Appointments { get; set; }
     }
 }

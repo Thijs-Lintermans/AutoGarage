@@ -45,42 +45,17 @@ namespace AutoGarage.API.Controllers
         {
             try
             {
-
-                // Use GetAsync with includes for RepairType, TimeSlot, and Customer
-                var appointmentsForDate = await _uow.AppointmentRepository.GetAsync(
-                    filter: null,    // No specific filter applied
-                    orderBy: null,   // No specific ordering applied
-                    includes: new Expression<Func<Appointment, object>>[]
-                    {
-                        a => a.RepairType,  // Include RepairType
-                        a => a.TimeSlot,    // Include TimeSlot
-                        a => a.Customer     // Include Customer
-                    }
-                );
-
-                // Get all time slots
-                var timeSlots = await _uow.TimeSlotRepository.GetAsync(
-                    filter: null,    // No filter applied
-                    orderBy: null,   // No specific ordering applied
+                // Haal alle tijdslots op die geen afspraak hebben voor de opgegeven datum
+                var availableTimeSlots = await _uow.TimeSlotRepository.GetAsync(
+                    filter: t => !t.Appointments.Any(a => a.AppointmentDate.Date == date), // Filter uit op tijdslots met afspraken op deze datum
+                    orderBy: null,   // Geen specifieke volgorde
                     includes: new Expression<Func<TimeSlot, object>>[]
                     {
-                        t => t.Appointments    // Include Appointments for each TimeSlot
+                t => t.Appointments    // Include Appointments voor elk TimeSlot
                     }
                 );
 
-
-                // Extract occupied time slot IDs
-                var occupiedTimeSlotIds = new HashSet<int>(appointmentsForDate
-                    .Select(a => a.TimeSlotId)
-                    .Distinct()
-                    .ToList());
-
-                // Filter time slots that are not occupied
-                var availableTimeSlots = timeSlots
-                    .Where(t => !occupiedTimeSlotIds.Contains(t.TimeSlotId))
-                    .ToList();
-            
-                // Return available time slots
+                // Return beschikbare tijdslots
                 return Ok(availableTimeSlots);
             }
             catch (Exception ex)
@@ -88,9 +63,6 @@ namespace AutoGarage.API.Controllers
                 return StatusCode(500, new { message = "An error occurred while processing your request.", error = ex.Message });
             }
         }
-
-
-
 
 
 

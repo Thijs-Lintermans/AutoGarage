@@ -12,6 +12,7 @@ using CoreBot.Models;
 using CoreBot.Cards;
 using System.Linq;
 using CoreBot.Services;
+using Antlr4.Runtime.Misc;
 
 namespace CoreBot.Dialogs
 {
@@ -52,6 +53,7 @@ namespace CoreBot.Dialogs
                 PhoneStepConfirmAsync,                   // Step 8: Confirm phone number
                 ConfirmDetailsStepAsync,                 // Step 9: Confirm details after entering new customer info
                 RepairTypeStepAsync,                     // Step 10: Repair type
+                ProcessRepairTypeStepAsync,
                 RepairDateStepAsync,                     // Step 11: Ask for repair date
                 GetTimeSlotsForDateStepAsync,            // Step 12: Get available time slots for the selected date
                 TimeSlotSelectionStepAsync
@@ -89,6 +91,8 @@ namespace CoreBot.Dialogs
                 // If customer exists, display their details
                 if (customer != null)
                 {
+
+                    stepContext.ActiveDialog.State["selectedCustomer"] = customer;
                     // Create and send the details card
                     var customerDetailsCard = CustomerDetailsCard.CreateCardAttachment(customer);
                     var cardActivity = MessageFactory.Attachment(customerDetailsCard);
@@ -260,6 +264,31 @@ namespace CoreBot.Dialogs
             }, cancellationToken);
         }
 
+        private async Task<DialogTurnResult> ProcessRepairTypeStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            string selectedRepairTypeName = (string)((FoundChoice)stepContext.Result).Value;
+
+            // Fetch the repair types again
+            var repairTypes = await RepairTypeDataService.GetRepairTypesAsync();
+
+            // Find the selected repair type
+            var selectedRepairType = repairTypes.FirstOrDefault(rt => rt.RepairName == selectedRepairTypeName);
+
+            if (selectedRepairType != null)
+            {
+                // Store the selected repair type in the dialog state
+                stepContext.ActiveDialog.State["selectedRepairType"] = selectedRepairType;
+                return await stepContext.NextAsync(null, cancellationToken);
+            }
+            else
+            {
+                await stepContext.Context.SendActivityAsync("Invalid repair type selected.", cancellationToken: cancellationToken);
+                return await stepContext.ReplaceDialogAsync(nameof(CustomerInquiryDialog), null, cancellationToken);
+            }
+        }
+
+
+
         // Step 10: Ask for repair date
         private async Task<DialogTurnResult> RepairDateStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
@@ -275,43 +304,48 @@ namespace CoreBot.Dialogs
                 try
                 {
                     // Fetch available time slots for the parsed date
-                    var availableTimeSlots = await ApiService<List<TimeSlot>>.GetAsync($"timeslots/available/{parsedDate}");
+                    var availableTimeSlots = await TimeSlotDataService.GetAvailableTimeSlotsByDateAsync(parsedDate);
 
                     if (availableTimeSlots != null && availableTimeSlots.Any())
                     {
-                        // Create the list of choices
-                        var timeSlotChoices = availableTimeSlots.Select(ts => new Choice { Value = ts.TimeSlotId.ToString() }).ToList();
+                        // Store the StartTime values in the dialog state
+                        var timeSlotStartTimes = availableTimeSlots.Select(ts => ts.StartTime.ToString()).ToList();
+                        stepContext.Values["availableTimeSlotStartTimes"] = timeSlotStartTimes;
+
+                        // Create the list of choices (displaying the time slot start time)
+                        var timeSlotChoices = availableTimeSlots.Select(ts => new Choice { Value = ts.StartTime.ToString() }).ToList();
 
                         // Create the prompt message
                         var promptMessage = MessageFactory.Text("Please select an available time slot.");
 
-                        // Create PromptOptions for the prompt
+                        // Create PromptOptions with the list of choices
                         var promptOptions = new PromptOptions
                         {
                             Choices = timeSlotChoices,
-                            Prompt = promptMessage
+                            Prompt = promptMessage,
+                            RetryPrompt = MessageFactory.Text("Please select a valid time slot from the list.")
                         };
 
-                        // Correct use of PromptAsync with cancellationToken
+                        // Prompt the user to select a time slot
                         return await stepContext.PromptAsync(nameof(ChoicePrompt), promptOptions, cancellationToken);
                     }
                     else
                     {
-                        // Correct usage of SendActivityAsync with cancellationToken
+                        // Handle the case when no time slots are available
                         await stepContext.Context.SendActivityAsync(MessageFactory.Text("No available time slots for this date."), cancellationToken);
                         return await stepContext.EndDialogAsync(null, cancellationToken);
                     }
                 }
                 catch (Exception ex)
                 {
-                    // Correct usage of SendActivityAsync with cancellationToken for error message
+                    // Handle error fetching time slots
                     await stepContext.Context.SendActivityAsync(MessageFactory.Text($"An error occurred while fetching time slots: {ex.Message}"), cancellationToken);
                     return await stepContext.EndDialogAsync(null, cancellationToken);
                 }
             }
             else
             {
-                // Correct usage of SendActivityAsync with cancellationToken for invalid date
+                // Handle invalid date format
                 await stepContext.Context.SendActivityAsync(MessageFactory.Text("The date you entered is invalid. Please use the format MM/DD/YYYY."), cancellationToken);
                 return await stepContext.ReplaceDialogAsync(nameof(CustomerInquiryDialog), null, cancellationToken); // Restart the dialog
             }
@@ -319,46 +353,70 @@ namespace CoreBot.Dialogs
 
         private async Task<DialogTurnResult> TimeSlotSelectionStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // Retrieve necessary values from dialog state
-            var availableTimeSlots = (List<TimeSlot>)stepContext.ActiveDialog.State["availableTimeSlots"];
-            var selectedCustomer = (Customer)stepContext.ActiveDialog.State["selectedCustomer"];
-            var selectedCustomerId = (int)stepContext.ActiveDialog.State["selectedCustomerId"];
-            var selectedRepairType = (RepairType)stepContext.ActiveDialog.State["selectedRepairType"];
+            // Get the selected time slot from the user's choice (e.g., "12:00 PM")
+            var selectedTimeSlotString = ((FoundChoice)stepContext.Result).Value;
 
-            var selectedTimeSlotId = (string)stepContext.Result;
+            // Retrieve the StartTime values from the dialog state (from the previous step)
+            var availableTimeSlotStartTimes = (List<string>)stepContext.Values["availableTimeSlotStartTimes"];
 
-            // Get the selected time slot
-            var timeSlot = availableTimeSlots.FirstOrDefault(ts => ts.TimeSlotId.ToString() == selectedTimeSlotId);
-
-            if (timeSlot != null)
+            // Check if the selected time slot is valid (i.e., exists in the list)
+            if (availableTimeSlotStartTimes.Contains(selectedTimeSlotString))
             {
-                // Create an Appointment object with necessary details
-                var appointment = new Appointment
+                // Fetch the full time slot object for the selected start time
+                var selectedTimeSlot = await TimeSlotDataService.GetTimeSlotByStartTimeAsync(selectedTimeSlotString);
+
+                if (selectedTimeSlot != null)
                 {
-                    AppointmentDate = DateTime.Now, // You can set the actual appointment date
-                    TimeSlotId = timeSlot.TimeSlotId,
-                    RepairTypeId = selectedRepairType.RepairTypeId, // Replace with actual repair type ID
-                    CustomerId = selectedCustomerId, // Replace with actual customer ID
-                    TimeSlot = timeSlot,
-                    RepairType = selectedRepairType, // Replace with actual repair type
-                    Customer = selectedCustomer // Replace with actual customer info
-                };
+                    // Store the selected time slot ID in the context for the next step
+                    stepContext.Values["selectedTimeSlotId"] = selectedTimeSlot.TimeSlotId;
 
-                // Create the appointment confirmation card
-                var appointmentCard = AppointmentDetailsCard.CreateCardAttachment(appointment);
+                    // Retrieve other necessary values from dialog state
+                    var selectedCustomer = (Customer)stepContext.ActiveDialog.State["selectedCustomer"];
+                    var selectedRepairType = (RepairType)stepContext.ActiveDialog.State["selectedRepairType"];
 
-                // Send the card as a message
-                await stepContext.Context.SendActivityAsync(MessageFactory.Attachment(appointmentCard), cancellationToken);
+                    // Create an Appointment object with the selected details
+                    var appointment = new Appointment
+                    {
+                        AppointmentDate = DateTime.Now, // Set the actual appointment date
+                        TimeSlotId = selectedTimeSlot.TimeSlotId,
+                        RepairTypeId = selectedRepairType.RepairTypeId,
+                        CustomerId = selectedCustomer.CustomerId,
+                        TimeSlot = selectedTimeSlot,
+                        RepairType = selectedRepairType,
+                        Customer = selectedCustomer
+                    };
 
-                // Proceed with the next steps
-                return await stepContext.EndDialogAsync(null, cancellationToken);
+                    // Create the appointment confirmation card
+                    var appointmentCard = AppointmentDetailsCard.CreateCardAttachment(appointment);
+
+                    // Send the card as a message to the user
+                    await stepContext.Context.SendActivityAsync(MessageFactory.Attachment(appointmentCard), cancellationToken);
+
+                    // End the dialog and proceed to the next steps
+                    return await stepContext.EndDialogAsync(null, cancellationToken);
+                }
+                else
+                {
+                    // Handle the case where the selected time slot is invalid
+                    await stepContext.Context.SendActivityAsync(MessageFactory.Text("Invalid time slot selected. Please try again."), cancellationToken);
+                    return await stepContext.ReplaceDialogAsync(nameof(CustomerInquiryDialog), null, cancellationToken); // Restart the dialog
+                }
             }
             else
             {
-                await stepContext.Context.SendActivityAsync(MessageFactory.Text("Invalid time slot selected. Please try again."), cancellationToken);
+                // Handle case where the selected time slot is not in the list
+                await stepContext.Context.SendActivityAsync(MessageFactory.Text("The selected time slot is no longer available. Please try again."), cancellationToken);
                 return await stepContext.ReplaceDialogAsync(nameof(CustomerInquiryDialog), null, cancellationToken); // Restart the dialog
             }
         }
+
+
+
+
+
+
+
+
 
 
 
