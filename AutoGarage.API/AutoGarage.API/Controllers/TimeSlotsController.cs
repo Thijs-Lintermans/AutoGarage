@@ -16,13 +16,11 @@ namespace AutoGarage.API.Controllers
     [ApiController]
     public class TimeSlotsController : ControllerBase
     {
-        private readonly ILogger<TimeSlotsController> _logger;
         private readonly IUnitOfWork _uow;
 
-        public TimeSlotsController(IUnitOfWork uow, ILogger<TimeSlotsController> logger)
+        public TimeSlotsController(IUnitOfWork uow)
         {
             _uow = uow;
-            _logger = logger;
         }
 
         // GET: api/TimeSlots
@@ -41,31 +39,35 @@ namespace AutoGarage.API.Controllers
             return Ok(timeSlots); // Return the result directly
         }
 
-        // GET: api/TimeSlots/available/{date}
+        // GET: api/TimeSlots/{date}
         [HttpGet("{date}")]
         public async Task<ActionResult<IEnumerable<TimeSlot>>> GetAvailableTimeSlots(DateTime date)
         {
             try
             {
-                _logger.LogInformation("Fetching appointments for date: {Date}", date);
 
-                // Get appointments for the specific date
+                // Use GetAsync with includes for RepairType, TimeSlot, and Customer
                 var appointmentsForDate = await _uow.AppointmentRepository.GetAsync(
-                    filter: a => a.AppointmentDate.Date == date.Date,
-                    orderBy: null,
-                    includes: null
+                    filter: null,    // No specific filter applied
+                    orderBy: null,   // No specific ordering applied
+                    includes: new Expression<Func<Appointment, object>>[]
+                    {
+                        a => a.RepairType,  // Include RepairType
+                        a => a.TimeSlot,    // Include TimeSlot
+                        a => a.Customer     // Include Customer
+                    }
                 );
 
                 // Get all time slots
-                var allTimeSlots = await _uow.TimeSlotRepository.GetAsync(
-                    filter: null,
-                    orderBy: null,
-                    includes: null
+                var timeSlots = await _uow.TimeSlotRepository.GetAsync(
+                    filter: null,    // No filter applied
+                    orderBy: null,   // No specific ordering applied
+                    includes: new Expression<Func<TimeSlot, object>>[]
+                    {
+                        t => t.Appointments    // Include Appointments for each TimeSlot
+                    }
                 );
 
-                // Log the number of appointments and time slots
-                _logger.LogInformation("Found {AppointmentCount} appointments for the date {Date}", appointmentsForDate.Count(), date);
-                _logger.LogInformation("Found {TimeSlotCount} time slots.", allTimeSlots.Count());
 
                 // Extract occupied time slot IDs
                 var occupiedTimeSlotIds = new HashSet<int>(appointmentsForDate
@@ -74,19 +76,15 @@ namespace AutoGarage.API.Controllers
                     .ToList());
 
                 // Filter time slots that are not occupied
-                var availableTimeSlots = allTimeSlots
+                var availableTimeSlots = timeSlots
                     .Where(t => !occupiedTimeSlotIds.Contains(t.TimeSlotId))
                     .ToList();
-
-                // Log available time slots
-                _logger.LogInformation("Available time slots: {AvailableTimeSlotCount}", availableTimeSlots.Count);
-
+            
                 // Return available time slots
                 return Ok(availableTimeSlots);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred while fetching available time slots.");
                 return StatusCode(500, new { message = "An error occurred while processing your request.", error = ex.Message });
             }
         }
