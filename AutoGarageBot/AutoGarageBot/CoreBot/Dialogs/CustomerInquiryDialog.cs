@@ -30,6 +30,8 @@ namespace CoreBot.Dialogs
 
         private readonly string EmailDialogID = "EmailDialogID";
         private readonly string PhoneDialogID = "PhoneDialogID";
+        private readonly string DateDialogID = "DateDialogID";
+        private readonly string LicensePlateDialogID = "LicensePlateDialogID";
 
         public CustomerInquiryDialog()
             : base(nameof(CustomerInquiryDialog))
@@ -38,6 +40,9 @@ namespace CoreBot.Dialogs
             AddDialog(new TextPrompt(nameof(TextPrompt)));
             AddDialog(new TextPrompt(EmailDialogID, EmailValidation));
             AddDialog(new TextPrompt(PhoneDialogID, PhoneValidation));
+            AddDialog(new TextPrompt(DateDialogID, DateValidation));
+            AddDialog(new TextPrompt(LicensePlateDialogID, LicensePlateValidation));
+
             AddDialog(new ChoicePrompt(nameof(ChoicePrompt)));
 
             // Define waterfall steps
@@ -69,14 +74,23 @@ namespace CoreBot.Dialogs
         {
             var customer = stepContext.Options as Customer ?? new Customer();
 
-            if (string.IsNullOrEmpty(customer.LicensePlate))
-            {
-                var promptMessage = MessageFactory.Text(LicensePlateStepMsgText, LicensePlateStepMsgText, InputHints.ExpectingInput);
-                return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = promptMessage }, cancellationToken);
-            }
+            customer.LastName = (string)stepContext.Result;  // Example assignment, you can adjust this.
 
-            return await stepContext.NextAsync(customer.LicensePlate, cancellationToken);
+            var promptMessage = MessageFactory.Text(LicensePlateStepMsgText);
+            var promptOptions = new PromptOptions
+            {
+                Prompt = promptMessage,
+                RetryPrompt = MessageFactory.Text("Please enter a valid license plate in the format '1-abc-123'.")
+            };
+
+            // Add the custom validator to the prompt options
+            var validator = new PromptValidator<string>((promptContext, ct) => LicensePlateValidation(promptContext, ct));
+
+            return await stepContext.PromptAsync(LicensePlateDialogID, promptOptions, cancellationToken);  // Use the correct ID here
         }
+
+
+
 
         private async Task<DialogTurnResult> LicensePlateCheckStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
@@ -91,15 +105,16 @@ namespace CoreBot.Dialogs
                 // If customer exists, display their details
                 if (customer != null)
                 {
-
+                    // Store the selected customer in the dialog state
                     stepContext.ActiveDialog.State["selectedCustomer"] = customer;
+
                     // Create and send the details card
                     var customerDetailsCard = CustomerDetailsCard.CreateCardAttachment(customer);
                     var cardActivity = MessageFactory.Attachment(customerDetailsCard);
                     await stepContext.Context.SendActivityAsync(cardActivity, cancellationToken);
 
                     // Show the confirmation message
-                    await stepContext.Context.SendActivityAsync(MessageFactory.Text(ConfirmStepMsgText), cancellationToken);
+                    await stepContext.Context.SendActivityAsync(MessageFactory.Text("We found your details! Please confirm."), cancellationToken);
 
                     // Prepare the prompt with only the choices, without repeating the confirmation message
                     var yesnoList = new List<string> { "Confirm", "Cancel" };
@@ -113,7 +128,7 @@ namespace CoreBot.Dialogs
                     return await stepContext.PromptAsync(nameof(ChoicePrompt), promptOptions, cancellationToken);
                 }
 
-                // If no customer found, throw an exception to proceed to registration
+                // If no customer found, proceed with registration
                 throw new Exception("Customer not found");
             }
             catch (Exception ex)
@@ -130,6 +145,7 @@ namespace CoreBot.Dialogs
                 return await stepContext.ContinueDialogAsync(cancellationToken);
             }
         }
+
 
 
         private async Task<DialogTurnResult> ConfirmStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
@@ -220,34 +236,36 @@ namespace CoreBot.Dialogs
         // Step 8: Final confirmation
         private async Task<DialogTurnResult> ConfirmDetailsStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            var customer = (Customer)stepContext.Options;
-            var choice = (FoundChoice)stepContext.Result;
+            var customer = stepContext.Options as Customer ?? new Customer();
+            var choice = stepContext.Result as FoundChoice;
 
-            if (choice.Value == "Confirm")
+            if (choice?.Value == "Confirm")
             {
                 try
                 {
-                    // Save the customer information
+                    // Save the new customer to the database
                     await CustomerDataService.InsertCustomerAsync(customer);
-                    await stepContext.Context.SendActivityAsync(MessageFactory.Text("Your information has been saved. Thank you!"), cancellationToken);
 
-                    // Proceed to the next step in the dialog
-                    return await stepContext.NextAsync(null, cancellationToken);  // Proceed to the next step in the waterfall dialog
+                    // Set selectedCustomer for new customer
+                    stepContext.ActiveDialog.State["selectedCustomer"] = customer;
+
+                    await stepContext.Context.SendActivityAsync(MessageFactory.Text("Your information has been saved. Thank you!"), cancellationToken);
+                    return await stepContext.NextAsync(null, cancellationToken);
                 }
                 catch (Exception ex)
                 {
-                    await stepContext.Context.SendActivityAsync(MessageFactory.Text($"There was an error while saving your information: {ex.Message}"), cancellationToken);
+                    await stepContext.Context.SendActivityAsync(MessageFactory.Text($"There was an error saving your information: {ex.Message}"), cancellationToken);
+                    return await stepContext.EndDialogAsync(cancellationToken);
                 }
             }
             else
             {
                 await stepContext.Context.SendActivityAsync(MessageFactory.Text("Your registration was canceled."), cancellationToken);
-                return await stepContext.EndDialogAsync(null, cancellationToken); // End the dialog if canceled
+                return await stepContext.EndDialogAsync(cancellationToken);
             }
-
-            // If something goes wrong, end the dialog
-            return await stepContext.EndDialogAsync(null, cancellationToken);
         }
+
+
 
 
         // Step 9: Repair type selection
@@ -277,7 +295,7 @@ namespace CoreBot.Dialogs
             if (selectedRepairType != null)
             {
                 // Store the selected repair type in the dialog state
-                stepContext.ActiveDialog.State["selectedRepairType"] = selectedRepairType;
+                stepContext.ActiveDialog.State["selectedRepairTypeId"] = selectedRepairType.RepairTypeId;
                 return await stepContext.NextAsync(null, cancellationToken);
             }
             else
@@ -353,31 +371,33 @@ namespace CoreBot.Dialogs
 
         private async Task<DialogTurnResult> TimeSlotSelectionStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // Get the selected time slot from the user's choice (e.g., "12:00 PM")
             var selectedTimeSlotString = ((FoundChoice)stepContext.Result).Value;
-
-            // Retrieve the StartTime values from the dialog state (from the previous step)
             var availableTimeSlotStartTimes = (List<string>)stepContext.Values["availableTimeSlotStartTimes"];
 
-            // Check if the selected time slot is valid (i.e., exists in the list)
             if (availableTimeSlotStartTimes.Contains(selectedTimeSlotString))
             {
-                // Fetch the full time slot object for the selected start time
                 var selectedTimeSlot = await TimeSlotDataService.GetTimeSlotByStartTimeAsync(selectedTimeSlotString);
 
                 if (selectedTimeSlot != null)
                 {
-                    // Store the selected time slot ID in the context for the next step
                     stepContext.Values["selectedTimeSlotId"] = selectedTimeSlot.TimeSlotId;
 
-                    // Retrieve other necessary values from dialog state
-                    var selectedCustomer = (Customer)stepContext.ActiveDialog.State["selectedCustomer"];
-                    var selectedRepairType = (RepairType)stepContext.ActiveDialog.State["selectedRepairType"];
+                    var selectedRepairTypeId = (int)stepContext.ActiveDialog.State["selectedRepairTypeId"];
+                    var selectedRepairType = await RepairTypeDataService.GetRepairTypeByIdAsync(selectedRepairTypeId);
 
-                    // Create an Appointment object with the selected details
+                    // Retrieve selectedCustomer (either new or existing)
+                    var selectedCustomer = (Customer)stepContext.ActiveDialog.State["selectedCustomer"];
+
+                    if (selectedCustomer == null)
+                    {
+                        await stepContext.Context.SendActivityAsync(MessageFactory.Text("No customer found for the appointment."), cancellationToken);
+                        return await stepContext.EndDialogAsync(cancellationToken);
+                    }
+
+                    // Create an appointment with selected details
                     var appointment = new Appointment
                     {
-                        AppointmentDate = DateTime.Now, // Set the actual appointment date
+                        AppointmentDate = DateTime.Now,
                         TimeSlotId = selectedTimeSlot.TimeSlotId,
                         RepairTypeId = selectedRepairType.RepairTypeId,
                         CustomerId = selectedCustomer.CustomerId,
@@ -386,36 +406,24 @@ namespace CoreBot.Dialogs
                         Customer = selectedCustomer
                     };
 
-                    // Create the appointment confirmation card
+                    // Create and send appointment confirmation card
                     var appointmentCard = AppointmentDetailsCard.CreateCardAttachment(appointment);
-
-                    // Send the card as a message to the user
                     await stepContext.Context.SendActivityAsync(MessageFactory.Attachment(appointmentCard), cancellationToken);
 
-                    // End the dialog and proceed to the next steps
                     return await stepContext.EndDialogAsync(null, cancellationToken);
                 }
                 else
                 {
-                    // Handle the case where the selected time slot is invalid
                     await stepContext.Context.SendActivityAsync(MessageFactory.Text("Invalid time slot selected. Please try again."), cancellationToken);
-                    return await stepContext.ReplaceDialogAsync(nameof(CustomerInquiryDialog), null, cancellationToken); // Restart the dialog
+                    return await stepContext.ReplaceDialogAsync(nameof(CustomerInquiryDialog), null, cancellationToken);
                 }
             }
             else
             {
-                // Handle case where the selected time slot is not in the list
                 await stepContext.Context.SendActivityAsync(MessageFactory.Text("The selected time slot is no longer available. Please try again."), cancellationToken);
-                return await stepContext.ReplaceDialogAsync(nameof(CustomerInquiryDialog), null, cancellationToken); // Restart the dialog
+                return await stepContext.ReplaceDialogAsync(nameof(CustomerInquiryDialog), null, cancellationToken);
             }
         }
-
-
-
-
-
-
-
 
 
 
@@ -459,6 +467,20 @@ namespace CoreBot.Dialogs
                 return true;
             }
             await promptContext.Context.SendActivityAsync(DateValidationError, cancellationToken: cancellationToken);
+            return false;
+        }
+
+        // License Plate validation
+        private async Task<bool> LicensePlateValidation(PromptValidatorContext<string> promptContext, CancellationToken cancellationToken)
+        {
+            const string LicensePlateValidationError = "The license plate you entered is not valid. Please use the format '1-abc-123'.";
+
+            string licensePlate = promptContext.Recognized.Value;
+            if (Regex.IsMatch(licensePlate, @"^\d-[a-zA-Z]{3}-\d{3}$"))
+            {
+                return true;
+            }
+            await promptContext.Context.SendActivityAsync(LicensePlateValidationError, cancellationToken: cancellationToken);
             return false;
         }
 
