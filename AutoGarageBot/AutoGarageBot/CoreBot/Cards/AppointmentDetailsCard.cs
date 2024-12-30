@@ -4,12 +4,13 @@ using Microsoft.Bot.Schema;
 using Newtonsoft.Json.Linq;
 using CoreBot.Models;
 using System;
+using CoreBot.DialogDetails;
 
 namespace CoreBot.Cards
 {
     public class AppointmentDetailsCard
     {
-        public static Attachment CreateCardAttachment(Appointment appointment)
+        public static Attachment CreateCardAttachment(AppointmentDetails appointmentDetails)
         {
             // Construct the adaptive card
             var card = new AdaptiveCard(new AdaptiveSchemaVersion(1, 3))
@@ -49,27 +50,27 @@ namespace CoreBot.Cards
                                     },
                                     new AdaptiveTextBlock
                                     {
-                                        Text = $"**Customer**: {appointment.Customer?.FirstName} {appointment.Customer?.LastName}",
+                                        Text = $"**Customer**: {appointmentDetails.Customer?.FirstName} {appointmentDetails.Customer?.LastName}",
                                         Wrap = true
                                     },
                                     new AdaptiveTextBlock
                                     {
-                                        Text = $"**Repair Type**: {appointment.RepairType?.RepairName}",
+                                        Text = $"**Repair Type**: {appointmentDetails.RepairType?.RepairName}",
                                         Wrap = true
                                     },
                                     new AdaptiveTextBlock
                                     {
-                                        Text = $"**Appointment Date**: {appointment.AppointmentDate:MMMM dd, yyyy}",
+                                        Text = $"**Appointment Date**: {appointmentDetails.AppointmentDate:MMMM dd, yyyy}",
                                         Wrap = true
                                     },
                                     new AdaptiveTextBlock
                                     {
-                                        Text = $"**Time Slot**: {appointment.TimeSlot?.StartTime:HH:mm}",
+                                        Text = $"**Time Slot**: {appointmentDetails.TimeSlot?.StartTime:HH:mm}",
                                         Wrap = true
                                     },
                                     new AdaptiveTextBlock
                                     {
-                                        Text = $"**License Plate**: {appointment.Customer?.LicensePlate}",
+                                        Text = $"**License Plate**: {appointmentDetails.Customer?.LicensePlate}",
                                         Wrap = true
                                     }
                                 }

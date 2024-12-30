@@ -40,13 +40,11 @@ namespace CoreBot
             // Create the Conversation state. (Used by the Dialog system itself.)
             services.AddSingleton<ConversationState>();
 
-            // Register LUIS recognizer
-            services.AddSingleton<FlightBookingRecognizer>();
-
             // Register the BookingDialog.
             services.AddSingleton<AppointmentDialog>();
             services.AddSingleton<OpeningHoursDialog>();
             services.AddSingleton<RepairTypesDialog>();
+            services.AddSingleton<AutoGarageBotCLURecognizer>();
 
             // The MainDialog that will be run by the bot.
             services.AddSingleton<MainDialog>();

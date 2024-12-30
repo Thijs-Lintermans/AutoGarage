@@ -85,18 +85,19 @@ namespace AutoGarage.DAL
             context.Appointments.AddRange(
                 new Appointment
                 {
-                    AppointmentDate = new DateTime(2024, 10, 22), // Convert DateOnly to DateTime
+                    AppointmentDate = "2024-10-22", // Correct string format
                     TimeSlotId = context.TimeSlots.First().TimeSlotId,
                     RepairTypeId = context.RepairTypes.First().RepairTypeId,
                     CustomerId = context.Customers.First().CustomerId
                 },
                 new Appointment
                 {
-                    AppointmentDate = new DateTime(2024, 10, 22), // Convert DateOnly to DateTime
+                    AppointmentDate = "2024-10-22", // Correct string format
                     TimeSlotId = context.TimeSlots.Skip(1).First().TimeSlotId,
                     RepairTypeId = context.RepairTypes.Skip(1).First().RepairTypeId,
                     CustomerId = context.Customers.Skip(1).First().CustomerId
                 }
+
             );
             context.SaveChanges();
 

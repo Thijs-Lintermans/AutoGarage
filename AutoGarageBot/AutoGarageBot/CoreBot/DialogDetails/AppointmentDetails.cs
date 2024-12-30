@@ -1,23 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using CoreBot.Models;
+using System;
 
-namespace AutoGarage.DAL.Models
+namespace CoreBot.DialogDetails
 {
-    public class Appointment
+    public class AppointmentDetails
     {
-        public int AppointmentId { get; set; }
         public string AppointmentDate { get; set; }
-        public int TimeSlotId { get; set; }
         public int RepairTypeId { get; set; }
+        public int TimeSlotId { get; set; }
         public int CustomerId { get; set; }
 
         public TimeSlot? TimeSlot { get; set; }
         public RepairType? RepairType { get; set; }
         public Customer? Customer { get; set; }
-
-
     }
 }

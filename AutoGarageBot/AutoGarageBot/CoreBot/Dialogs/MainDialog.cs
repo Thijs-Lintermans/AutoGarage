@@ -1,6 +1,8 @@
-﻿    // Generated with CoreBot .NET Template version v4.22.0
+﻿// Generated with CoreBot .NET Template version v4.22.0
 
-    using CoreBot.Models;
+using CoreBot.CognitiveModels;
+using CoreBot.DialogDetails;
+using CoreBot.Models;
     using Microsoft.Bot.Builder;
     using Microsoft.Bot.Builder.Dialogs;
     using Microsoft.Bot.Schema;
@@ -17,12 +19,14 @@
         public class MainDialog : ComponentDialog
         {
             private readonly ILogger _logger;
+            private readonly AutoGarageBotCLURecognizer _recognizer;
 
             // Dependency injection uses this constructor to instantiate MainDialog
-            public MainDialog(AppointmentDialog appointmentDialog, OpeningHoursDialog openingHoursDialog, RepairTypesDialog repairTypesDialog, ILogger<MainDialog> logger)
+            public MainDialog(AppointmentDialog appointmentDialog, OpeningHoursDialog openingHoursDialog, RepairTypesDialog repairTypesDialog, AutoGarageBotCLURecognizer autoGarageBotCLURecognizer, ILogger<MainDialog> logger)
                 : base(nameof(MainDialog))
             {
                 _logger = logger;
+                _recognizer = autoGarageBotCLURecognizer;
 
                 AddDialog(new TextPrompt(nameof(TextPrompt)));
                 AddDialog(openingHoursDialog);
@@ -44,6 +48,10 @@
 
             private async Task<DialogTurnResult> IntroStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
             {
+                if (!_recognizer.IsConfigured)
+                {
+                    throw new InvalidOperationException("ERROR: Model not ready");
+                }
                 // Show What would you like to do first time, What else second time
                 var messageText = stepContext.Options?.ToString() ?? "What would you like to do?";
                 return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text(messageText, messageText, InputHints.ExpectingInput) }, cancellationToken);
@@ -51,15 +59,28 @@
 
             private async Task<DialogTurnResult> ActStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
             {
-                // What choice did the user select
-                switch ((string)stepContext.Result)
+                var result = await _recognizer.RecognizeAsync<AutoGarageBotModel>(stepContext.Context, cancellationToken);
+            // What choice did the user select
+                switch (result.GetTopIntent().intent)
                 {
-                    case "opening hours":
+                    case AutoGarageBotModel.Intent.OpeningHours:
                         return await stepContext.BeginDialogAsync(nameof(OpeningHoursDialog), cancellationToken: cancellationToken);
                     // Start a child dialog to see what the opening hours are
-                    case "make appointment":
+                    case AutoGarageBotModel.Intent.MakeAppointment:
+                        // Start a child dialog to see what the opening hours are
+                        var customerDetails = new CustomerDetails();
+                        customerDetails.LicensePlate = result.Entities.GetLicensePlate();
+                        customerDetails.FirstName = result.Entities.GetFirstName();
+                        customerDetails.LastName = result.Entities.GetLastName();
+                        customerDetails.Mail = result.Entities.GetMail();
+                        customerDetails.PhoneNumber = result.Entities.GetPhoneNumber();
+                        var appointmentDetails = new AppointmentDetails();
+                        appointmentDetails.AppointmentDate = result.Entities.GetAppointmentDate();
+                        appointmentDetails.RepairType.RepairName = result.Entities.GetRepairType();
+                        appointmentDetails.TimeSlot.StartTime = result.Entities.GetTimeSlot();
+
                         return await stepContext.BeginDialogAsync(nameof(AppointmentDialog), new Customer(), cancellationToken: cancellationToken);
-                    case "repair types":
+                    case AutoGarageBotModel.Intent.RepairType:
                         // Start a child dialog to see what the opening hours are
                         return await stepContext.BeginDialogAsync(nameof(RepairTypesDialog), cancellationToken: cancellationToken);
                     default:

@@ -39,31 +39,6 @@ namespace AutoGarage.API.Controllers
             return Ok(timeSlots); // Return the result directly
         }
 
-        // GET: api/TimeSlots/{date}
-        [HttpGet("{date}")]
-        public async Task<ActionResult<IEnumerable<TimeSlot>>> GetAvailableTimeSlots(DateTime date)
-        {
-            try
-            {
-                // Haal alle tijdslots op die geen afspraak hebben voor de opgegeven datum
-                var availableTimeSlots = await _uow.TimeSlotRepository.GetAsync(
-                    filter: t => !t.Appointments.Any(a => a.AppointmentDate.Date == date), // Filter uit op tijdslots met afspraken op deze datum
-                    orderBy: null,   // Geen specifieke volgorde
-                    includes: new Expression<Func<TimeSlot, object>>[]
-                    {
-                t => t.Appointments    // Include Appointments voor elk TimeSlot
-                    }
-                );
-
-                // Return beschikbare tijdslots
-                return Ok(availableTimeSlots);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "An error occurred while processing your request.", error = ex.Message });
-            }
-        }
-
 
 
         // GET: api/TimeSlots/5

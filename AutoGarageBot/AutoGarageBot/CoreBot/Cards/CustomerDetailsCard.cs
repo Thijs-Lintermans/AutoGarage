@@ -4,12 +4,13 @@ using Microsoft.Bot.Schema;
 using Newtonsoft.Json.Linq;
 using CoreBot.Models;
 using System;
+using CoreBot.DialogDetails;
 
 namespace CoreBot.Cards
 {
     public class CustomerDetailsCard
     {
-        public static Attachment CreateCardAttachment(Customer customerInquiryDetails)
+        public static Attachment CreateCardAttachment(CustomerDetails customerDetails)
         {
             var card = new AdaptiveCard(new AdaptiveSchemaVersion(1, 3))
             {
@@ -42,23 +43,23 @@ namespace CoreBot.Cards
                                 {
                                     new AdaptiveTextBlock
                                     {
-                                        Text = $"Customer details for {customerInquiryDetails.FirstName} {customerInquiryDetails.LastName}",
+                                        Text = $"Customer details for {customerDetails.FirstName} {customerDetails.LastName}",
                                         Weight = AdaptiveTextWeight.Bolder,
                                         Size = AdaptiveTextSize.Large
                                     },
                                     new AdaptiveTextBlock
                                     {
-                                        Text = $"**Email**: {customerInquiryDetails.Mail}",
+                                        Text = $"**Email**: {customerDetails.Mail}",
                                         Wrap = true
                                     },
                                     new AdaptiveTextBlock
                                     {
-                                        Text = $"**Phone number**: {customerInquiryDetails.PhoneNumber}",
+                                        Text = $"**Phone number**: {customerDetails.PhoneNumber}",
                                         Wrap = true
                                     },
                                     new AdaptiveTextBlock
                                     {
-                                        Text = $"**License plate**: {customerInquiryDetails.LicensePlate}",
+                                        Text = $"**License plate**: {customerDetails.LicensePlate}",
                                         Wrap = true
                                     }
                                 }
