@@ -49,6 +49,7 @@ namespace CoreBot.Dialogs
             // Define waterfall steps
             var waterfallSteps = new WaterfallStep[]
             {
+                SomeStepAsync,
                 LicensePlateStepAsync,                   // Step 1: License plate number
                 LicensePlateCheckStepAsync,              // Step 2: Check if customer exists by license plate
                 ConfirmStepAsync,            // Step 3: If customer exists, confirm their details
@@ -71,11 +72,34 @@ namespace CoreBot.Dialogs
             InitialDialogId = nameof(WaterfallDialog);
         }
 
+        private async Task<DialogTurnResult> SomeStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            // Unpack the tuple from stepContext.Options
+            var appointmentContext = (Tuple<CustomerDetails, AppointmentDetails>)stepContext.Options;
+
+            // Extract the individual objects from the tuple
+            var customerDetails = appointmentContext.Item1; // CustomerDetails
+            var appointmentDetails = appointmentContext.Item2; // AppointmentDetails
+
+            // Now you can use both customerDetails and appointmentDetails in your logic
+            var customerName = customerDetails.FirstName;
+            var appointmentDate = appointmentDetails.AppointmentDate;
+
+            // Continue with the dialog
+            return await stepContext.NextAsync(); // No need to pass cancellationToken here
+        }
+
+
         // Step 1: Enter license plate number
         private async Task<DialogTurnResult> LicensePlateStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // Retrieve or create a CustomerDetails object for the dialog
-            var customerDetails = stepContext.Options as CustomerDetails ?? new CustomerDetails();
+            // Retrieve the CustomerDetails object or initialize a new one if it's not passed
+            CustomerDetails customerDetails = stepContext.Options switch
+            {
+                CustomerDetails details => details,
+                Tuple<CustomerDetails, AppointmentDetails> tuple => tuple.Item1,
+                _ => new CustomerDetails() // Default to a new CustomerDetails if neither is passed
+            };
 
             var promptMessage = MessageFactory.Text(LicensePlateStepMsgText);
             var promptOptions = new PromptOptions
@@ -102,60 +126,56 @@ namespace CoreBot.Dialogs
 
                 if (existingCustomer != null)
                 {
-                    // Map existingCustomer (Customer) to CustomerDetails
-                    customerDetails = new CustomerDetails
-                    {
-                        FirstName = existingCustomer.FirstName,
-                        LastName = existingCustomer.LastName,
-                        LicensePlate = existingCustomer.LicensePlate,
-                        PhoneNumber = existingCustomer.PhoneNumber,
-                        Mail = existingCustomer.Mail
-                    };
+                    // Map existingCustomer (Customer) to CustomerDetails and update customerDetails
+                    customerDetails.FirstName = existingCustomer.FirstName;
+                    customerDetails.LastName = existingCustomer.LastName;
+                    customerDetails.PhoneNumber = existingCustomer.PhoneNumber;
+                    customerDetails.Mail = existingCustomer.Mail;
 
-                    // Create and send the details card
+                    // Send details card
                     var customerDetailsCard = CustomerDetailsCard.CreateCardAttachment(customerDetails);
                     var cardActivity = MessageFactory.Attachment(customerDetailsCard);
                     await stepContext.Context.SendActivityAsync(cardActivity, cancellationToken);
 
-                    // Define yes/no choices and prepare prompt options
+                    // Define yes/no choices
                     var yesnoList = new List<string> { "Confirm", "Cancel" };
                     var promptOptions = new PromptOptions
                     {
                         Choices = yesnoList.Select(choice => new Choice { Value = choice }).ToList(),
-                        Prompt = MessageFactory.Text("") // Empty prompt, since the confirmation message was already shown
+                        Prompt = MessageFactory.Text("") // Empty prompt, confirmation shown above
                     };
 
                     // Prompt for confirmation
                     return await stepContext.PromptAsync(nameof(ChoicePrompt), promptOptions, cancellationToken);
                 }
 
-                // If no customer is found, continue to registration
-                throw new KeyNotFoundException("Customer not found");
-            }
-            catch (KeyNotFoundException)
-            {
-                // Notify the user and proceed to registration steps
+                // If no customer is found, proceed to registration
                 await stepContext.Context.SendActivityAsync(
                     MessageFactory.Text("We couldn't find your details. Let's proceed with registration."),
                     cancellationToken);
 
-                // Continue dialog with updated CustomerDetails
+                // Continue with customerDetails
                 return await stepContext.NextAsync(customerDetails, cancellationToken);
             }
             catch (Exception ex)
             {
-                // Log unexpected errors
+                // Log exception
                 Console.WriteLine($"Error occurred: {ex.Message}");
 
-                // Notify the user about the issue
+                // Notify the user
                 await stepContext.Context.SendActivityAsync(
-                    MessageFactory.Text("An unexpected error occurred. Please try again later."),
+                    MessageFactory.Text("We couldn't find your details. Let's proceed with registration."),
                     cancellationToken);
 
-                // End the dialog in case of an error
-                return await stepContext.EndDialogAsync(null, cancellationToken);
+                // Proceed to registration
+                stepContext.ActiveDialog.State["stepIndex"] = 2;
+
+                // Skip to registration
+                return await stepContext.ContinueDialogAsync(cancellationToken);
             }
         }
+
+
 
         private async Task<DialogTurnResult> ConfirmStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
@@ -178,92 +198,75 @@ namespace CoreBot.Dialogs
             return await stepContext.EndDialogAsync(cancellationToken); // This will stop the dialog
         }
 
-        // Step 3: New customer details (First Name)
         private async Task<DialogTurnResult> FirstNameStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // Retrieve or create CustomerDetails from the current dialog context
-            var customerDetails = stepContext.Options as CustomerDetails ?? new CustomerDetails();
-
-            // Save the first name input from the user
+            var customerDetails = (CustomerDetails)stepContext.Options;
             customerDetails.FirstName = (string)stepContext.Result;
 
-            // If the last name is missing, prompt the user for it
-            if (string.IsNullOrEmpty(customerDetails.LastName))
+            // If first name is still missing, prompt for it
+            if (string.IsNullOrEmpty(customerDetails.FirstName))
             {
-                var promptMessage = MessageFactory.Text("Please provide your last name.");
+                var promptMessage = MessageFactory.Text(FirstNameStepMsgText, FirstNameStepMsgText, InputHints.ExpectingInput);
                 return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = promptMessage }, cancellationToken);
             }
 
-            // If the last name is already filled, proceed to the next step
-            return await stepContext.NextAsync(customerDetails, cancellationToken);
+            return await stepContext.NextAsync(customerDetails.FirstName, cancellationToken);
         }
 
-        // Step 4: Last name
+
         private async Task<DialogTurnResult> LastNameStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // Retrieve or create CustomerDetails from the current dialog context
-            var customerDetails = stepContext.Options as CustomerDetails ?? new CustomerDetails();
-
-            // Save the last name input from the user
+            var customerDetails = (CustomerDetails)stepContext.Options;
             customerDetails.LastName = (string)stepContext.Result;
 
-            // If the email is missing, prompt the user for it
-            if (string.IsNullOrEmpty(customerDetails.Mail))
+            // If last name is still missing, prompt for it
+            if (string.IsNullOrEmpty(customerDetails.LastName))
             {
-                var promptMessage = MessageFactory.Text("Please provide your email address.");
+                var promptMessage = MessageFactory.Text(LastNameStepMsgText, LastNameStepMsgText, InputHints.ExpectingInput);
                 return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = promptMessage }, cancellationToken);
             }
 
-            // If the email is already filled, proceed to the next step
-            return await stepContext.NextAsync(customerDetails, cancellationToken);
+            return await stepContext.NextAsync(customerDetails.LastName, cancellationToken);
         }
 
-
-        // Step 5: Email
-        // Step 5: Email address
         private async Task<DialogTurnResult> EmailStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // Retrieve or create CustomerDetails from the current dialog context
-            var customerDetails = stepContext.Options as CustomerDetails ?? new CustomerDetails();
-
-            // Save the email input from the user
+            var customerDetails = (CustomerDetails)stepContext.Options;
             customerDetails.Mail = (string)stepContext.Result;
 
-            // If the phone number is missing, prompt the user for it
-            if (string.IsNullOrEmpty(customerDetails.PhoneNumber))
+            // If email is still missing, prompt for it
+            if (string.IsNullOrEmpty(customerDetails.Mail))
             {
-                var promptMessage = MessageFactory.Text("Please provide your phone number.");
+                var promptMessage = MessageFactory.Text(EmailStepMsgText, EmailStepMsgText, InputHints.ExpectingInput);
                 return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = promptMessage }, cancellationToken);
             }
 
-            // If the phone number is already filled, proceed to the next step
-            return await stepContext.NextAsync(customerDetails, cancellationToken);
+            return await stepContext.NextAsync(customerDetails.Mail, cancellationToken);
         }
 
-        // Step 6: Phone number
-        // Step 6: Phone number
+
+
         private async Task<DialogTurnResult> PhoneStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // Retrieve or create CustomerDetails from the current dialog context
-            var customerDetails = stepContext.Options as CustomerDetails ?? new CustomerDetails();
-
-            // Save the phone number input from the user
+            var customerDetails = (CustomerDetails)stepContext.Options;
             customerDetails.PhoneNumber = (string)stepContext.Result;
 
-            // Proceed to the next step (Phone number confirmation)
-            return await stepContext.NextAsync(customerDetails, cancellationToken);
+            // If phone number is still missing, prompt for it
+            if (string.IsNullOrEmpty(customerDetails.PhoneNumber))
+            {
+                var promptMessage = MessageFactory.Text(PhoneStepMsgText, PhoneStepMsgText, InputHints.ExpectingInput);
+                return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = promptMessage }, cancellationToken);
+            }
+
+            return await stepContext.NextAsync(customerDetails.PhoneNumber, cancellationToken);
         }
 
 
 
-        // Step 7: Confirm phone number
         // Step 7: Confirm phone number
         private async Task<DialogTurnResult> PhoneStepConfirmAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // Retrieve the CustomerDetails object passed from the previous step
             var customerDetails = (CustomerDetails)stepContext.Options;
-
-            // Update the phone number in the CustomerDetails object with the value provided by the user
             customerDetails.PhoneNumber = (string)stepContext.Result;
 
             // Create and send the confirmation card for the details
@@ -281,6 +284,7 @@ namespace CoreBot.Dialogs
                 Prompt = MessageFactory.Text("Please confirm your details.")
             }, cancellationToken);
         }
+
 
         // Step 8: Final confirmation
         private async Task<DialogTurnResult> ConfirmDetailsStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
@@ -333,6 +337,7 @@ namespace CoreBot.Dialogs
                 return await stepContext.EndDialogAsync(null, cancellationToken);
             }
         }
+
 
 
 

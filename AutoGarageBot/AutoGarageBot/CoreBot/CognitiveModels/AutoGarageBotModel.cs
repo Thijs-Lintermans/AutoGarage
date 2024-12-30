@@ -12,7 +12,7 @@ namespace CoreBot.CognitiveModels
         {
             MakeAppointment,
             OpeningHours,
-            RepairType,
+            RepairTypes,
             None
         }
 
