@@ -16,7 +16,7 @@ using Antlr4.Runtime.Misc;
 
 namespace CoreBot.Dialogs
 {
-    public class CustomerInquiryDialog : CancelAndHelpDialog
+    public class AppointmentDialog : CancelAndHelpDialog
     {
         private const string LicensePlateStepMsgText = "What is your license plate number?";
         private const string FirstNameStepMsgText = "What is your first name?";
@@ -33,8 +33,8 @@ namespace CoreBot.Dialogs
         private readonly string DateDialogID = "DateDialogID";
         private readonly string LicensePlateDialogID = "LicensePlateDialogID";
 
-        public CustomerInquiryDialog()
-            : base(nameof(CustomerInquiryDialog))
+        public AppointmentDialog()
+            : base(nameof(AppointmentDialog))
         {
             // Add necessary dialogs
             AddDialog(new TextPrompt(nameof(TextPrompt)));
@@ -301,7 +301,7 @@ namespace CoreBot.Dialogs
             else
             {
                 await stepContext.Context.SendActivityAsync("Invalid repair type selected.", cancellationToken: cancellationToken);
-                return await stepContext.ReplaceDialogAsync(nameof(CustomerInquiryDialog), null, cancellationToken);
+                return await stepContext.ReplaceDialogAsync(nameof(AppointmentDialog), null, cancellationToken);
             }
         }
 
@@ -365,7 +365,7 @@ namespace CoreBot.Dialogs
             {
                 // Handle invalid date format
                 await stepContext.Context.SendActivityAsync(MessageFactory.Text("The date you entered is invalid. Please use the format MM/DD/YYYY."), cancellationToken);
-                return await stepContext.ReplaceDialogAsync(nameof(CustomerInquiryDialog), null, cancellationToken); // Restart the dialog
+                return await stepContext.ReplaceDialogAsync(nameof(AppointmentDialog), null, cancellationToken); // Restart the dialog
             }
         }
 
@@ -415,13 +415,13 @@ namespace CoreBot.Dialogs
                 else
                 {
                     await stepContext.Context.SendActivityAsync(MessageFactory.Text("Invalid time slot selected. Please try again."), cancellationToken);
-                    return await stepContext.ReplaceDialogAsync(nameof(CustomerInquiryDialog), null, cancellationToken);
+                    return await stepContext.ReplaceDialogAsync(nameof(AppointmentDialog), null, cancellationToken);
                 }
             }
             else
             {
                 await stepContext.Context.SendActivityAsync(MessageFactory.Text("The selected time slot is no longer available. Please try again."), cancellationToken);
-                return await stepContext.ReplaceDialogAsync(nameof(CustomerInquiryDialog), null, cancellationToken);
+                return await stepContext.ReplaceDialogAsync(nameof(AppointmentDialog), null, cancellationToken);
             }
         }
 

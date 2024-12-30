@@ -44,7 +44,7 @@ namespace CoreBot
             services.AddSingleton<FlightBookingRecognizer>();
 
             // Register the BookingDialog.
-            services.AddSingleton<CustomerInquiryDialog>();
+            services.AddSingleton<AppointmentDialog>();
             services.AddSingleton<OpeningHoursDialog>();
             services.AddSingleton<RepairTypesDialog>();
 

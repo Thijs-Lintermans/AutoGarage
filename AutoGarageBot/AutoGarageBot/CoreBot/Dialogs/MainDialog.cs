@@ -19,14 +19,14 @@
             private readonly ILogger _logger;
 
             // Dependency injection uses this constructor to instantiate MainDialog
-            public MainDialog(CustomerInquiryDialog customerInquiryDialog, OpeningHoursDialog openingHoursDialog, RepairTypesDialog repairTypesDialog, ILogger<MainDialog> logger)
+            public MainDialog(AppointmentDialog appointmentDialog, OpeningHoursDialog openingHoursDialog, RepairTypesDialog repairTypesDialog, ILogger<MainDialog> logger)
                 : base(nameof(MainDialog))
             {
                 _logger = logger;
 
                 AddDialog(new TextPrompt(nameof(TextPrompt)));
                 AddDialog(openingHoursDialog);
-                AddDialog(customerInquiryDialog);
+                AddDialog(appointmentDialog);
                 AddDialog(repairTypesDialog);
 
                 var waterfallSteps = new WaterfallStep[]
@@ -58,7 +58,7 @@
                         return await stepContext.BeginDialogAsync(nameof(OpeningHoursDialog), cancellationToken: cancellationToken);
                     // Start a child dialog to see what the opening hours are
                     case "make appointment":
-                        return await stepContext.BeginDialogAsync(nameof(CustomerInquiryDialog), new Customer(), cancellationToken: cancellationToken);
+                        return await stepContext.BeginDialogAsync(nameof(AppointmentDialog), new Customer(), cancellationToken: cancellationToken);
                     case "repair types":
                         // Start a child dialog to see what the opening hours are
                         return await stepContext.BeginDialogAsync(nameof(RepairTypesDialog), cancellationToken: cancellationToken);
