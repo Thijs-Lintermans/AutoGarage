@@ -14,6 +14,8 @@ using System.Linq;
 using CoreBot.Services;
 using Antlr4.Runtime.Misc;
 using CoreBot.DialogDetails;
+using Newtonsoft.Json;
+using Microsoft.AspNetCore.JsonPatch.Internal;
 
 namespace CoreBot.Dialogs
 {
@@ -49,7 +51,6 @@ namespace CoreBot.Dialogs
             // Define waterfall steps
             var waterfallSteps = new WaterfallStep[]
             {
-                SomeStepAsync,
                 LicensePlateStepAsync,                   // Step 1: License plate number
                 LicensePlateCheckStepAsync,              // Step 2: Check if customer exists by license plate
                 ConfirmStepAsync,            // Step 3: If customer exists, confirm their details
@@ -72,33 +73,12 @@ namespace CoreBot.Dialogs
             InitialDialogId = nameof(WaterfallDialog);
         }
 
-        private async Task<DialogTurnResult> SomeStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
-        {
-            // Unpack the tuple from stepContext.Options
-            var appointmentContext = (Tuple<CustomerDetails, AppointmentDetails>)stepContext.Options;
-
-            // Extract the individual objects from the tuple
-            var customerDetails = appointmentContext.Item1; // CustomerDetails
-            var appointmentDetails = appointmentContext.Item2; // AppointmentDetails
-
-            // Now you can use both customerDetails and appointmentDetails in your logic
-            var customerName = customerDetails.FirstName;
-            var appointmentDate = appointmentDetails.AppointmentDate;
-
-            // Continue with the dialog
-            return await stepContext.NextAsync(); // No need to pass cancellationToken here
-        }
-
-
-        // Step 1: Enter license plate number
         private async Task<DialogTurnResult> LicensePlateStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // Retrieve the CustomerDetails object or initialize a new one if it's not passed
-            CustomerDetails customerDetails = stepContext.Options switch
+            // Retrieve or initialize AppointmentDetails with embedded CustomerDetails
+            var appointmentDetails = stepContext.Options as AppointmentDetails ?? new AppointmentDetails
             {
-                CustomerDetails details => details,
-                Tuple<CustomerDetails, AppointmentDetails> tuple => tuple.Item1,
-                _ => new CustomerDetails() // Default to a new CustomerDetails if neither is passed
+                Customer = new CustomerDetails()
             };
 
             var promptMessage = MessageFactory.Text(LicensePlateStepMsgText);
@@ -111,67 +91,70 @@ namespace CoreBot.Dialogs
             return await stepContext.PromptAsync(LicensePlateDialogID, promptOptions, cancellationToken);
         }
 
+
         private async Task<DialogTurnResult> LicensePlateCheckStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // Retrieve or create a CustomerDetails object for the dialog
-            var customerDetails = stepContext.Options as CustomerDetails ?? new CustomerDetails();
+            // Retrieve AppointmentDetails from stepContext.Options
+            var appointmentDetails = stepContext.Options as AppointmentDetails;
+            if (appointmentDetails == null)
+                throw new InvalidCastException("stepContext.Options is not AppointmentDetails");
 
-            // Save the entered license plate
-            customerDetails.LicensePlate = (string)stepContext.Result;
+            // Initialize Customer if not already initialized
+            if (appointmentDetails.Customer == null)
+            {
+                appointmentDetails.Customer = new CustomerDetails();
+            }
+
+            // Save the license plate in CustomerDetails
+            appointmentDetails.Customer.LicensePlate = (string)stepContext.Result;
 
             try
             {
-                // Attempt to retrieve customer details from the database
-                var existingCustomer = await CustomerDataService.GetCustomerByLicenseplateAsync(customerDetails.LicensePlate);
+                // Retrieve existing customer details
+                var existingCustomer = await CustomerDataService.GetCustomerByLicenseplateAsync(appointmentDetails.Customer.LicensePlate);
 
                 if (existingCustomer != null)
                 {
-                    // Map existingCustomer (Customer) to CustomerDetails and update customerDetails
-                    customerDetails.FirstName = existingCustomer.FirstName;
-                    customerDetails.LastName = existingCustomer.LastName;
-                    customerDetails.PhoneNumber = existingCustomer.PhoneNumber;
-                    customerDetails.Mail = existingCustomer.Mail;
+                    // Map data to CustomerDetails
+                    appointmentDetails.Customer.FirstName = existingCustomer.FirstName;
+                    appointmentDetails.Customer.LastName = existingCustomer.LastName;
+                    appointmentDetails.Customer.PhoneNumber = existingCustomer.PhoneNumber;
+                    appointmentDetails.Customer.Mail = existingCustomer.Mail;
 
-                    // Send details card
-                    var customerDetailsCard = CustomerDetailsCard.CreateCardAttachment(customerDetails);
+                    // Send customer details card
+                    var customerDetailsCard = CustomerDetailsCard.CreateCardAttachment(appointmentDetails.Customer);
                     var cardActivity = MessageFactory.Attachment(customerDetailsCard);
                     await stepContext.Context.SendActivityAsync(cardActivity, cancellationToken);
 
-                    // Define yes/no choices
-                    var yesnoList = new List<string> { "Confirm", "Cancel" };
+                    // Prompt for confirmation
                     var promptOptions = new PromptOptions
                     {
-                        Choices = yesnoList.Select(choice => new Choice { Value = choice }).ToList(),
-                        Prompt = MessageFactory.Text("") // Empty prompt, confirmation shown above
+                        Choices = new List<Choice>
+                {
+                    new Choice("Confirm"),
+                    new Choice("Cancel")
+                },
+                        Prompt = MessageFactory.Text("Do you confirm these details?")
                     };
 
-                    // Prompt for confirmation
                     return await stepContext.PromptAsync(nameof(ChoicePrompt), promptOptions, cancellationToken);
                 }
 
-                // If no customer is found, proceed to registration
-                await stepContext.Context.SendActivityAsync(
-                    MessageFactory.Text("We couldn't find your details. Let's proceed with registration."),
-                    cancellationToken);
-
-                // Continue with customerDetails
-                return await stepContext.NextAsync(customerDetails, cancellationToken);
+                // If no existing customer, move on with appointmentDetails
+                return await stepContext.NextAsync(appointmentDetails, cancellationToken);
             }
             catch (Exception ex)
             {
-                // Log exception
-                Console.WriteLine($"Error occurred: {ex.Message}");
+                Console.WriteLine($"Error: {ex.Message}");
 
-                // Notify the user
                 await stepContext.Context.SendActivityAsync(
                     MessageFactory.Text("We couldn't find your details. Let's proceed with registration."),
                     cancellationToken);
 
-                // Proceed to registration
                 stepContext.ActiveDialog.State["stepIndex"] = 2;
 
-                // Skip to registration
-                return await stepContext.ContinueDialogAsync(cancellationToken);
+                // Pass the LicensePlate string to the next step to proceed with registration
+                return await stepContext.NextAsync(appointmentDetails.Customer.LicensePlate, cancellationToken);
             }
         }
 
@@ -179,127 +162,176 @@ namespace CoreBot.Dialogs
 
         private async Task<DialogTurnResult> ConfirmStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // Ensure the result is a FoundChoice object
             var userChoice = stepContext.Result as FoundChoice;
+
+            var appointmentDetails = stepContext.Options as AppointmentDetails;
 
             if (userChoice != null && userChoice.Value == "Confirm")
             {
-                // Set the stepIndex to the desired step (e.g., step 7 for RepairTypeStepAsync)
+                await stepContext.Context.SendActivityAsync(
+                    MessageFactory.Text("Your details have been confirmed. Let's proceed to select a repair type."),
+                    cancellationToken);
+
                 stepContext.ActiveDialog.State["stepIndex"] = 8;
 
-                // Skip directly to the step by continuing the dialog
-                return await stepContext.ContinueDialogAsync(cancellationToken);
+                // Pass only the license plate to the next step
+                return await stepContext.NextAsync(appointmentDetails.Customer.LicensePlate, cancellationToken); // Pass only the license plate
             }
 
-            // If the user chooses "Cancel", stop the dialog
-            await stepContext.Context.SendActivityAsync(MessageFactory.Text("Your registration was canceled."), cancellationToken);
+            await stepContext.Context.SendActivityAsync(
+                MessageFactory.Text("Your registration has been canceled."),
+                cancellationToken);
 
-            // End the dialog when user presses cancel
-            return await stepContext.EndDialogAsync(cancellationToken); // This will stop the dialog
+            return await stepContext.EndDialogAsync(null, cancellationToken); // End the dialog
         }
+
 
         private async Task<DialogTurnResult> FirstNameStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            var customerDetails = (CustomerDetails)stepContext.Options;
-            customerDetails.FirstName = (string)stepContext.Result;
+            var appointmentDetails = stepContext.Options as AppointmentDetails;
+            if (appointmentDetails == null)
+                throw new InvalidCastException("stepContext.Options is not AppointmentDetails");
 
-            // If first name is still missing, prompt for it
-            if (string.IsNullOrEmpty(customerDetails.FirstName))
+            // If first name is missing, prompt for it
+            if (string.IsNullOrEmpty(appointmentDetails.Customer.FirstName))
             {
-                var promptMessage = MessageFactory.Text(FirstNameStepMsgText, FirstNameStepMsgText, InputHints.ExpectingInput);
+                var promptMessage = MessageFactory.Text("Please provide your first name.", inputHint: InputHints.ExpectingInput);
                 return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = promptMessage }, cancellationToken);
             }
 
-            return await stepContext.NextAsync(customerDetails.FirstName, cancellationToken);
+            // Proceed to the next step, passing the appointmentDetails object
+            return await stepContext.NextAsync(appointmentDetails, cancellationToken);
         }
-
 
         private async Task<DialogTurnResult> LastNameStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            var customerDetails = (CustomerDetails)stepContext.Options;
-            customerDetails.LastName = (string)stepContext.Result;
+            var appointmentDetails = stepContext.Options as AppointmentDetails;
+            if (appointmentDetails == null)
+                throw new InvalidCastException("stepContext.Options is not AppointmentDetails");
 
-            // If last name is still missing, prompt for it
-            if (string.IsNullOrEmpty(customerDetails.LastName))
+            // Save the first name from the previous step
+            if (stepContext.Result is string firstNameResult)
             {
-                var promptMessage = MessageFactory.Text(LastNameStepMsgText, LastNameStepMsgText, InputHints.ExpectingInput);
+                appointmentDetails.Customer.FirstName = firstNameResult;
+            }
+
+            // If last name is missing, prompt for it
+            if (string.IsNullOrEmpty(appointmentDetails.Customer.LastName))
+            {
+                var promptMessage = MessageFactory.Text(LastNameStepMsgText, inputHint: InputHints.ExpectingInput);
                 return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = promptMessage }, cancellationToken);
             }
 
-            return await stepContext.NextAsync(customerDetails.LastName, cancellationToken);
+            // Proceed to the next step with the existing last name
+            return await stepContext.NextAsync(appointmentDetails.Customer.LastName, cancellationToken);
         }
+
 
         private async Task<DialogTurnResult> EmailStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            var customerDetails = (CustomerDetails)stepContext.Options;
-            customerDetails.Mail = (string)stepContext.Result;
+            var appointmentDetails = stepContext.Options as AppointmentDetails;
+            if (appointmentDetails == null)
+                throw new InvalidCastException("stepContext.Options is not AppointmentDetails");
 
-            // If email is still missing, prompt for it
-            if (string.IsNullOrEmpty(customerDetails.Mail))
+            // Save the last name from the previous step
+            if (stepContext.Result is string lastNameResult)
             {
-                var promptMessage = MessageFactory.Text(EmailStepMsgText, EmailStepMsgText, InputHints.ExpectingInput);
+                appointmentDetails.Customer.LastName = lastNameResult;
+            }
+
+            // If email is missing, prompt for it
+            if (string.IsNullOrEmpty(appointmentDetails.Customer.Mail))
+            {
+                var promptMessage = MessageFactory.Text(EmailStepMsgText, inputHint: InputHints.ExpectingInput);
                 return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = promptMessage }, cancellationToken);
             }
 
-            return await stepContext.NextAsync(customerDetails.Mail, cancellationToken);
+            // Proceed to the next step with the existing email
+            return await stepContext.NextAsync(appointmentDetails.Customer.Mail, cancellationToken);
         }
 
 
 
         private async Task<DialogTurnResult> PhoneStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            var customerDetails = (CustomerDetails)stepContext.Options;
-            customerDetails.PhoneNumber = (string)stepContext.Result;
+            var appointmentDetails = stepContext.Options as AppointmentDetails;
+            if (appointmentDetails == null)
+                throw new InvalidCastException("stepContext.Options is not AppointmentDetails");
 
-            // If phone number is still missing, prompt for it
-            if (string.IsNullOrEmpty(customerDetails.PhoneNumber))
+            // Save the email from the previous step
+            if (stepContext.Result is string emailResult)
             {
-                var promptMessage = MessageFactory.Text(PhoneStepMsgText, PhoneStepMsgText, InputHints.ExpectingInput);
+                appointmentDetails.Customer.Mail = emailResult;
+            }
+
+            // If phone number is missing, prompt for it
+            if (string.IsNullOrEmpty(appointmentDetails.Customer.PhoneNumber))
+            {
+                var promptMessage = MessageFactory.Text(PhoneStepMsgText, inputHint: InputHints.ExpectingInput);
                 return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = promptMessage }, cancellationToken);
             }
 
-            return await stepContext.NextAsync(customerDetails.PhoneNumber, cancellationToken);
+            // Proceed to the next step with the existing phone number
+            return await stepContext.NextAsync(appointmentDetails.Customer.PhoneNumber, cancellationToken);
         }
 
 
-
-        // Step 7: Confirm phone number
         private async Task<DialogTurnResult> PhoneStepConfirmAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            var customerDetails = (CustomerDetails)stepContext.Options;
-            customerDetails.PhoneNumber = (string)stepContext.Result;
+            var appointmentDetails = stepContext.Options as AppointmentDetails;
+            if (appointmentDetails == null)
+                throw new InvalidCastException("stepContext.Options is not AppointmentDetails");
 
-            // Create and send the confirmation card for the details
+            // Save the phone number directly on appointmentDetails.Customer
+            appointmentDetails.Customer.PhoneNumber = (string)stepContext.Result;
+
+            // Verify all customer details
+            var customerDetails = appointmentDetails.Customer;
+            if (string.IsNullOrEmpty(customerDetails.FirstName) ||
+                string.IsNullOrEmpty(customerDetails.LastName) ||
+                string.IsNullOrEmpty(customerDetails.Mail) ||
+                string.IsNullOrEmpty(customerDetails.PhoneNumber) ||
+                string.IsNullOrEmpty(customerDetails.LicensePlate))
+            {
+                throw new InvalidOperationException("Customer details are incomplete.");
+            }
+
+            // Create and send the confirmation card with all details
             var confirmationCard = CustomerDetailsCard.CreateCardAttachment(customerDetails);
             var cardActivity = MessageFactory.Attachment(confirmationCard);
             await stepContext.Context.SendActivityAsync(cardActivity, cancellationToken);
 
-            // Define the yes/no choices for the user to confirm or cancel
+            // Define the yes/no choices for confirmation
             var yesnoList = new List<string> { "Confirm", "Cancel" };
 
-            // Prompt the user for confirmation via button clicks on the card
+            // Ask for confirmation
+            var promptMessage = MessageFactory.Text("Please confirm your details:");
             return await stepContext.PromptAsync(nameof(ChoicePrompt), new PromptOptions
             {
                 Choices = yesnoList.Select(choice => new Choice { Value = choice }).ToList(),
-                Prompt = MessageFactory.Text("Please confirm your details.")
+                Prompt = promptMessage,
+                Style = ListStyle.SuggestedAction
             }, cancellationToken);
         }
 
 
-        // Step 8: Final confirmation
+
         private async Task<DialogTurnResult> ConfirmDetailsStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // Retrieve the CustomerDetails object passed from the previous step
-            var customerDetails = stepContext.Options as CustomerDetails;
+            var appointmentDetails = stepContext.Options as AppointmentDetails;
+            if (appointmentDetails == null)
+                throw new InvalidCastException("stepContext.Options is not AppointmentDetails");
 
-            // Get the user's choice from the previous step
+            var customerDetails = appointmentDetails.Customer;
+
+            // Get the user's choice
             var choice = stepContext.Result as FoundChoice;
 
             if (choice?.Value == "Confirm")
             {
                 try
                 {
-                    // Create and save a new Customer using the details from CustomerDetails
+                    // Save the customer details to the database
                     await CustomerDataService.InsertCustomerAsync(new Customer
                     {
                         FirstName = customerDetails.FirstName,
@@ -309,19 +341,16 @@ namespace CoreBot.Dialogs
                         LicensePlate = customerDetails.LicensePlate
                     });
 
-                    // Optionally store the confirmed details in the dialog's state
-                    stepContext.ActiveDialog.State["selectedCustomer"] = customerDetails;
-
-                    // Notify the user of the successful registration
+                    // Notify the user of successful registration
                     await stepContext.Context.SendActivityAsync(
                         MessageFactory.Text("Your information has been saved. Thank you!"), cancellationToken);
 
-                    // Proceed to end the dialog with the customer details as the result
-                    return await stepContext.EndDialogAsync(customerDetails, cancellationToken);
+                    // Return the completed AppointmentDetails
+                    return await stepContext.NextAsync(appointmentDetails, cancellationToken);
                 }
                 catch (Exception ex)
                 {
-                    // Handle any errors during the save process
+                    // Handle any errors
                     await stepContext.Context.SendActivityAsync(
                         MessageFactory.Text($"There was an error saving your information: {ex.Message}"), cancellationToken);
 
@@ -337,9 +366,6 @@ namespace CoreBot.Dialogs
                 return await stepContext.EndDialogAsync(null, cancellationToken);
             }
         }
-
-
-
 
         // Step 9: Repair type selection
         private async Task<DialogTurnResult> RepairTypeStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
@@ -359,17 +385,19 @@ namespace CoreBot.Dialogs
         {
             string selectedRepairTypeName = (string)((FoundChoice)stepContext.Result).Value;
 
-            // Fetch the repair types again
             var repairTypes = await RepairTypeDataService.GetRepairTypesAsync();
-
-            // Find the selected repair type
             var selectedRepairType = repairTypes.FirstOrDefault(rt => rt.RepairName == selectedRepairTypeName);
 
             if (selectedRepairType != null)
             {
-                // Store the selected repair type in the dialog state
-                stepContext.ActiveDialog.State["selectedRepairTypeId"] = selectedRepairType.RepairTypeId;
-                return await stepContext.NextAsync(null, cancellationToken);
+                var appointmentDetails = stepContext.Options as AppointmentDetails;
+                if (appointmentDetails == null)
+                    throw new InvalidCastException("stepContext.Options is not AppointmentDetails");
+
+                appointmentDetails.RepairTypeId = selectedRepairType.RepairTypeId; // Update the correct RepairTypeId
+                appointmentDetails.RepairType.RepairName = selectedRepairType.RepairName; // Save the name for confirmation display
+
+                return await stepContext.NextAsync(appointmentDetails, cancellationToken);
             }
             else
             {
@@ -379,138 +407,136 @@ namespace CoreBot.Dialogs
         }
 
 
-
         // Step 10: Ask for repair date
         private async Task<DialogTurnResult> RepairDateStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // Prompt the user for a date
             var promptMessage = MessageFactory.Text(RepairDateStepMsgText, RepairDateStepMsgText, InputHints.ExpectingInput);
             return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = promptMessage }, cancellationToken);
         }
+
         private async Task<DialogTurnResult> GetTimeSlotsForDateStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
             string userInput = (string)stepContext.Result;
             if (DateOnly.TryParse(userInput, out var parsedDate))
             {
-                try
+                var appointmentDetails = stepContext.Options as AppointmentDetails;
+                if (appointmentDetails == null)
+                    throw new InvalidCastException("stepContext.Options is not AppointmentDetails");
+
+                appointmentDetails.AppointmentDate = parsedDate.ToString(); // Update the date
+
+                var availableTimeSlots = await TimeSlotDataService.GetAvailableTimeSlotsByDateAsync(parsedDate);
+                if (availableTimeSlots != null && availableTimeSlots.Any())
                 {
-                    // Fetch available time slots for the parsed date
-                    var availableTimeSlots = await TimeSlotDataService.GetAvailableTimeSlotsByDateAsync(parsedDate);
+                    var timeSlotChoices = availableTimeSlots.Select(ts => new Choice { Value = ts.StartTime.ToString() }).ToList();
 
-                    if (availableTimeSlots != null && availableTimeSlots.Any())
+                    return await stepContext.PromptAsync(nameof(ChoicePrompt), new PromptOptions
                     {
-                        // Store the StartTime values in the dialog state
-                        var timeSlotStartTimes = availableTimeSlots.Select(ts => ts.StartTime.ToString()).ToList();
-                        stepContext.Values["availableTimeSlotStartTimes"] = timeSlotStartTimes;
-
-                        // Create the list of choices (displaying the time slot start time)
-                        var timeSlotChoices = availableTimeSlots.Select(ts => new Choice { Value = ts.StartTime.ToString() }).ToList();
-
-                        // Create the prompt message
-                        var promptMessage = MessageFactory.Text("Please select an available time slot.");
-
-                        // Create PromptOptions with the list of choices
-                        var promptOptions = new PromptOptions
-                        {
-                            Choices = timeSlotChoices,
-                            Prompt = promptMessage,
-                            RetryPrompt = MessageFactory.Text("Please select a valid time slot from the list.")
-                        };
-
-                        // Prompt the user to select a time slot
-                        return await stepContext.PromptAsync(nameof(ChoicePrompt), promptOptions, cancellationToken);
-                    }
-                    else
-                    {
-                        // Handle the case when no time slots are available
-                        await stepContext.Context.SendActivityAsync(MessageFactory.Text("No available time slots for this date."), cancellationToken);
-                        return await stepContext.EndDialogAsync(null, cancellationToken);
-                    }
+                        Choices = timeSlotChoices,
+                        Prompt = MessageFactory.Text("Please select an available time slot."),
+                        RetryPrompt = MessageFactory.Text("Please select a valid time slot from the list.")
+                    }, cancellationToken);
                 }
-                catch (Exception ex)
+                else
                 {
-                    // Handle error fetching time slots
-                    await stepContext.Context.SendActivityAsync(MessageFactory.Text($"An error occurred while fetching time slots: {ex.Message}"), cancellationToken);
+                    await stepContext.Context.SendActivityAsync(MessageFactory.Text("No available time slots for this date."), cancellationToken);
                     return await stepContext.EndDialogAsync(null, cancellationToken);
                 }
             }
             else
             {
-                // Handle invalid date format
                 await stepContext.Context.SendActivityAsync(MessageFactory.Text("The date you entered is invalid. Please use the format MM/DD/YYYY."), cancellationToken);
-                return await stepContext.ReplaceDialogAsync(nameof(AppointmentDialog), null, cancellationToken); // Restart the dialog
+                return await stepContext.ReplaceDialogAsync(nameof(AppointmentDialog), null, cancellationToken);
             }
         }
 
-        // Step for showing the confirmation card and asking the user to confirm the appointment
+
         private async Task<DialogTurnResult> AppointmentConfirmStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // Retrieve the details necessary for the appointment from the previous step
+            // Retrieve the appointment details from the options
             var appointmentDetails = (AppointmentDetails)stepContext.Options;
 
-            // Create and send the confirmation card for the appointment
+            if (appointmentDetails == null)
+            {
+                throw new InvalidCastException("stepContext.Options is not AppointmentDetails");
+            }
+
+            // Capture the selected time slot from the user's choice
+            var selectedTimeSlot = (FoundChoice)stepContext.Result;
+
+            // Parse the selected time slot into DateTime (assuming the format is valid)
+            var selectedDateTime = DateTime.Parse(selectedTimeSlot.Value);
+
+            // Convert the DateTime to a string that matches the desired time format
+            string formattedTimeSlot = selectedDateTime.ToString("HH:mm"); // Format the time as "HH:mm" (24-hour format)
+
+            // Update the TimeSlot property in appointmentDetails
+            appointmentDetails.TimeSlot = new TimeSlot { StartTime = formattedTimeSlot }; // Set the StartTime as a formatted string
+
+            // Log or debug the current state to check appointmentDetails
+            Console.WriteLine($"AppointmentDetails: {JsonConvert.SerializeObject(appointmentDetails)}");
+
+            // Create the confirmation card with the selected time slot
             var appointmentConfirmationCard = AppointmentDetailsCard.CreateCardAttachment(appointmentDetails);
             var cardActivity = MessageFactory.Attachment(appointmentConfirmationCard);
             await stepContext.Context.SendActivityAsync(cardActivity, cancellationToken);
 
-            // Define the yes/no choices for the user to confirm or cancel the appointment
+            // Prepare options for user confirmation
             var yesnoList = new List<string> { "Confirm", "Cancel" };
 
-            // Prompt the user for confirmation via button clicks on the card
+            // Prompt the user to confirm or cancel the appointment
             return await stepContext.PromptAsync(nameof(ChoicePrompt), new PromptOptions
             {
                 Choices = yesnoList.Select(choice => new Choice { Value = choice }).ToList(),
                 Prompt = MessageFactory.Text("Please confirm your appointment details.")
             }, cancellationToken);
         }
+    
 
-        // Final step to confirm and save the appointment or cancel it
+
+
         private async Task<DialogTurnResult> ConfirmAppointmentStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // Retrieve the appointment details passed from the previous step
             var appointmentDetails = stepContext.Options as AppointmentDetails;
-
-            // Get the user's choice from the previous step
             var choice = stepContext.Result as FoundChoice;
 
             if (choice?.Value == "Confirm")
             {
                 try
                 {
-                    // Insert the appointment into the database via the API or data service
+                    var customer = new Customer
+                    {
+                        CustomerId = appointmentDetails.CustomerId, // Assuming CustomerDetails has this
+                                                                             // Map other necessary fields here from CustomerDetails to Customer
+                    };
+
                     await AppointmentDataService.InsertAppointmentAsync(new Appointment
                     {
                         AppointmentDate = appointmentDetails.AppointmentDate,
                         TimeSlotId = appointmentDetails.TimeSlotId,
                         RepairTypeId = appointmentDetails.RepairTypeId,
-                        CustomerId = appointmentDetails.CustomerId
+                        CustomerId = appointmentDetails.CustomerId, // This might remain as it is (ID)
+                        TimeSlot = appointmentDetails.TimeSlot,
+                        RepairType = appointmentDetails.RepairType,
+                        Customer = customer // Pass the mapped Customer object
                     });
 
-                    // Notify the user that the appointment has been saved successfully
-                    await stepContext.Context.SendActivityAsync(
-                        MessageFactory.Text("Your appointment has been successfully booked. Thank you!"), cancellationToken);
-
-                    // Proceed to end the dialog with the appointment details as the result
+                    await stepContext.Context.SendActivityAsync(MessageFactory.Text("Your appointment has been successfully booked. Thank you!"), cancellationToken);
                     return await stepContext.EndDialogAsync(appointmentDetails, cancellationToken);
                 }
                 catch (Exception ex)
                 {
-                    // Handle any errors during the save process
-                    await stepContext.Context.SendActivityAsync(
-                        MessageFactory.Text($"There was an error saving your appointment: {ex.Message}"), cancellationToken);
-
+                    await stepContext.Context.SendActivityAsync(MessageFactory.Text($"There was an error saving your appointment: {ex.Message}"), cancellationToken);
                     return await stepContext.EndDialogAsync(null, cancellationToken);
                 }
             }
             else
             {
-                // Notify the user of the cancellation
-                await stepContext.Context.SendActivityAsync(
-                    MessageFactory.Text("Your appointment was canceled."), cancellationToken);
-
+                await stepContext.Context.SendActivityAsync(MessageFactory.Text("Your appointment was canceled."), cancellationToken);
                 return await stepContext.EndDialogAsync(null, cancellationToken);
             }
         }
+
 
 
         // Email validation

@@ -12,6 +12,6 @@ namespace CoreBot.DialogDetails
 
         public TimeSlot? TimeSlot { get; set; }
         public RepairType? RepairType { get; set; }
-        public Customer? Customer { get; set; }
+        public CustomerDetails Customer { get; set; }
     }
 }

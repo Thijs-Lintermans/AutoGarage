@@ -67,41 +67,24 @@ using CoreBot.Models;
                         return await stepContext.BeginDialogAsync(nameof(OpeningHoursDialog), cancellationToken: cancellationToken);
                 // Start a child dialog to see what the opening hours are
                 case AutoGarageBotModel.Intent.MakeAppointment:
-                    // Create CustomerDetails and AppointmentDetails
-                    var customerDetails = new CustomerDetails
-                    {
-                        LicensePlate = result.Entities.GetLicensePlate(),
-                        FirstName = result.Entities.GetFirstName(),
-                        LastName = result.Entities.GetLastName(),
-                        Mail = result.Entities.GetMail(),
-                        PhoneNumber = result.Entities.GetPhoneNumber()
-                    };
-
                     var appointmentDetails = new AppointmentDetails
                     {
-                        AppointmentDate = result.Entities.GetAppointmentDate(),
-                        RepairType = new RepairType
+                        AppointmentDate = DateTime.Now.ToString(),
+                        RepairType = new RepairType { RepairName = "Default Repair" },
+                        TimeSlot = new TimeSlot { StartTime = "09:00" },
+                        Customer = new CustomerDetails
                         {
-                            RepairName = result.Entities.GetRepairType() ?? "Default Repair Type"
-                        },
-                        TimeSlot = new TimeSlot
-                        {
-                            StartTime = result.Entities.GetTimeSlot() ?? "09:00"
-                        },
-                        Customer = new Customer
-                        {
-                            LicensePlate = customerDetails.LicensePlate,
-                            FirstName = customerDetails.FirstName,
-                            LastName = customerDetails.LastName,
-                            Mail = customerDetails.Mail,
-                            PhoneNumber = customerDetails.PhoneNumber
+                            LicensePlate = result.Entities.GetLicensePlate(),
+                            FirstName = result.Entities.GetFirstName(),
+                            LastName = result.Entities.GetLastName(),
+                            Mail = result.Entities.GetMail(),
+                            PhoneNumber = result.Entities.GetPhoneNumber()
                         }
                     };
 
-                    // Wrap both CustomerDetails and AppointmentDetails in a tuple and pass to the dialog
-                    var appointmentContext = new Tuple<CustomerDetails, AppointmentDetails>(customerDetails, appointmentDetails);
+                    // Ensure all necessary properties are initialized and passed correctly
+                    return await stepContext.BeginDialogAsync(nameof(AppointmentDialog), appointmentDetails, cancellationToken);
 
-                    return await stepContext.BeginDialogAsync(nameof(AppointmentDialog), appointmentContext, cancellationToken: cancellationToken);
                 case AutoGarageBotModel.Intent.RepairTypes:
                         // Start a child dialog to see what the opening hours are
                         return await stepContext.BeginDialogAsync(nameof(RepairTypesDialog), cancellationToken: cancellationToken);
