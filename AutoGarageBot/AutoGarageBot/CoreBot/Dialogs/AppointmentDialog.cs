@@ -16,6 +16,7 @@ using Antlr4.Runtime.Misc;
 using CoreBot.DialogDetails;
 using Newtonsoft.Json;
 using Microsoft.AspNetCore.JsonPatch.Internal;
+using System.Security.AccessControl;
 
 namespace CoreBot.Dialogs
 {
@@ -81,15 +82,17 @@ namespace CoreBot.Dialogs
                 Customer = new CustomerDetails()
             };
 
-            var promptMessage = MessageFactory.Text(LicensePlateStepMsgText);
-            var promptOptions = new PromptOptions
+            // If license plate is missing, prompt for it
+            if (string.IsNullOrEmpty(appointmentDetails.Customer.LicensePlate))
             {
-                Prompt = promptMessage,
-                RetryPrompt = MessageFactory.Text("Please enter a valid license plate in the format '1-abc-123'.")
-            };
+                var promptMessage = MessageFactory.Text(LicensePlateStepMsgText, inputHint: InputHints.ExpectingInput);
+                return await stepContext.PromptAsync(LicensePlateDialogID, new PromptOptions { Prompt = promptMessage, RetryPrompt = MessageFactory.Text("Please enter a valid license plate in the format '1-abc-123'.") }, cancellationToken);
+            }
 
-            return await stepContext.PromptAsync(LicensePlateDialogID, promptOptions, cancellationToken);
+            // Proceed with the next step if license plate is already available or after license plate is entered
+            return await stepContext.NextAsync(cancellationToken);
         }
+
 
 
         private async Task<DialogTurnResult> LicensePlateCheckStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
@@ -243,7 +246,7 @@ namespace CoreBot.Dialogs
             if (string.IsNullOrEmpty(appointmentDetails.Customer.Mail))
             {
                 var promptMessage = MessageFactory.Text(EmailStepMsgText, inputHint: InputHints.ExpectingInput);
-                return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = promptMessage }, cancellationToken);
+                return await stepContext.PromptAsync(EmailDialogID, new PromptOptions { Prompt = promptMessage }, cancellationToken);
             }
 
             // Proceed to the next step with the existing email
@@ -268,7 +271,7 @@ namespace CoreBot.Dialogs
             if (string.IsNullOrEmpty(appointmentDetails.Customer.PhoneNumber))
             {
                 var promptMessage = MessageFactory.Text(PhoneStepMsgText, inputHint: InputHints.ExpectingInput);
-                return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = promptMessage }, cancellationToken);
+                return await stepContext.PromptAsync(PhoneDialogID, new PromptOptions { Prompt = promptMessage }, cancellationToken);
             }
 
             // Proceed to the next step with the existing phone number
@@ -411,7 +414,7 @@ namespace CoreBot.Dialogs
         private async Task<DialogTurnResult> RepairDateStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
             var promptMessage = MessageFactory.Text(RepairDateStepMsgText, RepairDateStepMsgText, InputHints.ExpectingInput);
-            return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = promptMessage }, cancellationToken);
+            return await stepContext.PromptAsync(DateDialogID, new PromptOptions { Prompt = promptMessage }, cancellationToken);
         }
 
         private async Task<DialogTurnResult> GetTimeSlotsForDateStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
@@ -491,7 +494,7 @@ namespace CoreBot.Dialogs
                 Prompt = MessageFactory.Text("Please confirm your appointment details.")
             }, cancellationToken);
         }
-    
+
 
 
 
@@ -502,40 +505,85 @@ namespace CoreBot.Dialogs
 
             if (choice?.Value == "Confirm")
             {
+                // Log de inhoud van appointmentDetails
+                Console.WriteLine("Debugging appointmentDetails:");
+                Console.WriteLine(JsonConvert.SerializeObject(appointmentDetails, Formatting.Indented));
+
                 try
                 {
+                    // Haal de juiste TimeSlot en Customer op
+                    var rightTimeslot = await TimeSlotDataService.GetTimeSlotByStartTimeAsync(appointmentDetails.TimeSlot.StartTime);
+                    var rightCustomerInfo = await CustomerDataService.GetCustomerByLicenseplateAsync(appointmentDetails.Customer.LicensePlate);
+                    var rightRepairType = await RepairTypeDataService.GetRepairTypeByIdAsync(appointmentDetails.RepairTypeId);
+
+                    var strippedRepairType = new RepairType
+                    {
+                        RepairTypeId = rightRepairType.RepairTypeId,
+                        RepairName = rightRepairType.RepairName,
+                        RepairDescription = rightRepairType.RepairDescription
+                    };
+                    // Maak een nieuwe "gestripte" TimeSlot zonder gekoppelde afspraken
+                    var strippedTimeslot = new TimeSlot
+                    {
+                        TimeSlotId = rightTimeslot.TimeSlotId,
+                        StartTime = rightTimeslot.StartTime
+                    };
+                    // Maak een nieuwe klant (optioneel als deze al correct wordt opgehaald)
                     var customer = new Customer
                     {
-                        CustomerId = appointmentDetails.CustomerId, // Assuming CustomerDetails has this
-                                                                             // Map other necessary fields here from CustomerDetails to Customer
+                        CustomerId = rightCustomerInfo.CustomerId, // Gebruik de ID van rightCustomerInfo
+                        FirstName = rightCustomerInfo.FirstName,
+                        LastName = rightCustomerInfo.LastName,
+                        Mail = rightCustomerInfo.Mail,
+                        PhoneNumber = rightCustomerInfo.PhoneNumber,
+                        LicensePlate = rightCustomerInfo.LicensePlate
                     };
 
-                    await AppointmentDataService.InsertAppointmentAsync(new Appointment
+                    // Maak de afspraak aan
+                    var appointment = new Appointment
                     {
                         AppointmentDate = appointmentDetails.AppointmentDate,
-                        TimeSlotId = appointmentDetails.TimeSlotId,
-                        RepairTypeId = appointmentDetails.RepairTypeId,
-                        CustomerId = appointmentDetails.CustomerId, // This might remain as it is (ID)
-                        TimeSlot = appointmentDetails.TimeSlot,
-                        RepairType = appointmentDetails.RepairType,
-                        Customer = customer // Pass the mapped Customer object
-                    });
+                        TimeSlotId = rightTimeslot.TimeSlotId, // Gebruik de juiste TimeSlotId
+                        RepairTypeId = rightRepairType.RepairTypeId,
+                        CustomerId = rightCustomerInfo.CustomerId, // Gebruik de juiste CustomerId
+                    };
 
-                    await stepContext.Context.SendActivityAsync(MessageFactory.Text("Your appointment has been successfully booked. Thank you!"), cancellationToken);
+                    // Log de inhoud van de afspraak voor debuggen
+                    Console.WriteLine("Debugging appointment:");
+                    Console.WriteLine(JsonConvert.SerializeObject(appointment, Formatting.Indented));
+
+                    // Voeg de afspraak toe aan de database
+                    await AppointmentDataService.InsertAppointmentAsync(appointment);
+
+                    // Bevestig de succesvolle boeking
+                    await stepContext.Context.SendActivityAsync(
+                        MessageFactory.Text("Your appointment has been successfully booked. Thank you!"),
+                        cancellationToken);
+
                     return await stepContext.EndDialogAsync(appointmentDetails, cancellationToken);
                 }
                 catch (Exception ex)
                 {
-                    await stepContext.Context.SendActivityAsync(MessageFactory.Text($"There was an error saving your appointment: {ex.Message}"), cancellationToken);
+                    // Log eventuele fouten
+                    Console.WriteLine($"Exception occurred: {ex.Message}");
+                    await stepContext.Context.SendActivityAsync(
+                        MessageFactory.Text($"There was an error saving your appointment: {ex.Message}"),
+                        cancellationToken);
+
                     return await stepContext.EndDialogAsync(null, cancellationToken);
                 }
             }
             else
             {
-                await stepContext.Context.SendActivityAsync(MessageFactory.Text("Your appointment was canceled."), cancellationToken);
+                // Annuleer de afspraak als de gebruiker dit aangeeft
+                await stepContext.Context.SendActivityAsync(
+                    MessageFactory.Text("Your appointment was canceled."),
+                    cancellationToken);
+
                 return await stepContext.EndDialogAsync(null, cancellationToken);
             }
         }
+
 
 
 

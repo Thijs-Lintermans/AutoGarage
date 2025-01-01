@@ -5,17 +5,13 @@ using Parkeerwachter.DAL;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
-
-// Add services to the container.
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         // Configure JSON serializer settings globally
-        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.Preserve;
-        options.JsonSerializerOptions.MaxDepth = 64;
-    });
-
-// Add services to the container.
+        options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+        options.JsonSerializerOptions.MaxDepth = 64; // Optional: Set the maximum depth if needed
+    });// Add services to the container.
 var connectionString
     = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<AutoGarageContext>(options =>
