@@ -1,0 +1,29 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.0",
+  "body": [
+    {
+      "type": "Image",
+      "url": "https://koenvangeel.pythonanywhere.com/static/restaurant.jpg",
+      "size": "large"
+    },
+    {
+      "type": "TextBlock",
+      "spacing": "medium",
+      "size": "default",
+      "weight": "bolder",
+      "text": "Hello there! Welcome to our restaurant!",
+      "wrap": true,
+      "maxLines": 0
+    },
+    {
+      "type": "TextBlock",
+      "size": "default",
+      "isSubtle": true,
+      "text": "_I'm your virtual assistant, here to make your dining experience exceptional. Whether you're craving culinary delights, want to know about our specials, or need assistance with anything else, I'm here to help!_",
+      "wrap": true,
+      "maxLines": 0
+    }
+  ]
+}

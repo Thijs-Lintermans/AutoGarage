@@ -28,7 +28,7 @@ namespace CoreBot.Dialogs
         private async Task<DialogTurnResult> FirstActStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
             // Show card with opening hours
-            var response = MessageFactory.Attachment(CardHelper.CreateCardAttachment("openinghoursCard"));
+            var response = MessageFactory.Attachment(CardHelper.CreateCardAttachment("openingHoursCard"));
             await stepContext.Context.SendActivityAsync(response, cancellationToken);
 
             // End the dialog
