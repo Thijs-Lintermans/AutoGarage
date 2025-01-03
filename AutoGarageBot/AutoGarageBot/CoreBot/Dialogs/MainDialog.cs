@@ -20,8 +20,6 @@ namespace CoreBot.Dialogs
     {
         private readonly ILogger _logger;
         private readonly AutoGarageBotCLURecognizer _recognizer;
-
-        // Dependency injection uses this constructor to instantiate MainDialog
         public MainDialog(AppointmentDialog appointmentDialog, OpeningHoursDialog openingHoursDialog, RepairTypesDialog repairTypesDialog, AutoGarageBotCLURecognizer autoGarageBotCLURecognizer, ILogger<MainDialog> logger)
             : base(nameof(MainDialog))
         {
@@ -42,7 +40,6 @@ namespace CoreBot.Dialogs
 
             AddDialog(new WaterfallDialog(nameof(WaterfallDialog), waterfallSteps));
 
-            // The initial child Dialog to run.
             InitialDialogId = nameof(WaterfallDialog);
         }
 
@@ -52,7 +49,7 @@ namespace CoreBot.Dialogs
             {
                 throw new InvalidOperationException("ERROR: Model not ready");
             }
-            // Show What would you like to do first time, What else second time
+
             var messageText = stepContext.Options?.ToString() ?? "What would you like to do?";
             return await stepContext.PromptAsync(nameof(TextPrompt), new PromptOptions { Prompt = MessageFactory.Text(messageText, messageText, InputHints.ExpectingInput) }, cancellationToken);
         }
@@ -60,12 +57,11 @@ namespace CoreBot.Dialogs
         private async Task<DialogTurnResult> ActStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
             var result = await _recognizer.RecognizeAsync<AutoGarageBotModel>(stepContext.Context, cancellationToken);
-            // What choice did the user select
+
             switch (result.GetTopIntent().intent)
             {
                 case AutoGarageBotModel.Intent.OpeningHours:
                     return await stepContext.BeginDialogAsync(nameof(OpeningHoursDialog), cancellationToken: cancellationToken);
-                // Start a child dialog to see what the opening hours are
                 case AutoGarageBotModel.Intent.MakeAppointment:
                     var appointmentDetails = new AppointmentDetails
                     {
@@ -81,37 +77,17 @@ namespace CoreBot.Dialogs
                             PhoneNumber = result.Entities.GetPhoneNumber()
                         }
                     };
-
-                    // Ensure all necessary properties are initialized and passed correctly
                     return await stepContext.BeginDialogAsync(nameof(AppointmentDialog), appointmentDetails, cancellationToken);
 
                 case AutoGarageBotModel.Intent.RepairTypes:
-                    // Start a child dialog to see what the opening hours are
                     return await stepContext.BeginDialogAsync(nameof(RepairTypesDialog), cancellationToken: cancellationToken);
                 default:
-                    // Skip to next step in the waterfall
                     return await stepContext.NextAsync(null, cancellationToken);
             }
         }
 
         private async Task<DialogTurnResult> FinalStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // If the child dialog ("BookingDialog") was cancelled, the user failed to confirm or if the intent wasn't BookFlight
-            // the Result here will be null.
-            if (stepContext.Result is BookingDetails result)
-            {
-                // Now we have all the booking details call the booking service.
-
-                // If the call to the booking service was successful tell the user.
-
-                var timeProperty = new TimexProperty(result.TravelDate);
-                var travelDateMsg = timeProperty.ToNaturalLanguage(DateTime.Now);
-                var messageText = $"I have you booked to {result.Destination} from {result.Origin} on {travelDateMsg}";
-                var message = MessageFactory.Text(messageText, messageText, InputHints.IgnoringInput);
-                await stepContext.Context.SendActivityAsync(message, cancellationToken);
-            }
-
-            // Restart the main dialog with a different message the second time around
             var promptMessage = "What else can I do for you?";
             return await stepContext.ReplaceDialogAsync(InitialDialogId, promptMessage, cancellationToken);
         }

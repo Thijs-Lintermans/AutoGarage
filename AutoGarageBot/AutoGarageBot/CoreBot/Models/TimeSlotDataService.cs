@@ -27,26 +27,21 @@ namespace CoreBot.Models
         {
             try
             {
-                // Haal alle tijdslots op
                 var timeSlots = await GetTimeSlotsAsync();
 
-                // Filter de tijdslots op basis van de datum
                 var availableTimeSlots = timeSlots.Where(t =>
                 {
-                    // Convert string AppointmentDate to DateTime (or DateOnly)
                     if (DateTime.TryParse(t.Appointments.FirstOrDefault()?.AppointmentDate, out var appointmentDate))
                     {
-                        // Compare only the date part (ignoring time)
                         return appointmentDate.Date != date.ToDateTime(TimeOnly.MinValue).Date;
                     }
-                    return true; // If invalid date, assume it's available
+                    return true;
                 }).ToList();
 
                 return availableTimeSlots;
             }
             catch (Exception ex)
             {
-                // Foutafhandeling
                 throw new Exception($"Error fetching available time slots for date {date}: {ex.Message}", ex);
             }
         }

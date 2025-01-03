@@ -12,7 +12,6 @@ namespace CoreBot.Models
         }
         public static async Task<RepairType> GetRepairTypeByIdAsync(int id)
         {
-            // Make an API call to the "repairtypes/{id}" endpoint
             return await ApiService<RepairType>.GetAsync($"repairtypes/{id}");
         }
     }

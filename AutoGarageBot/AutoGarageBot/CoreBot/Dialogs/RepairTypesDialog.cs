@@ -20,17 +20,13 @@ namespace CoreBot.Dialogs
 
             AddDialog(new WaterfallDialog(nameof(WaterfallDialog), waterfallSteps));
 
-            // The initial child Dialog to run
             InitialDialogId = nameof(WaterfallDialog);
         }
 
         private async Task<DialogTurnResult> FirstActStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // Show card with repair types
             var response = MessageFactory.Attachment(await RepairTypeDetailsCard.CreateCardAttachmentAsync());
             await stepContext.Context.SendActivityAsync(response, cancellationToken);
-
-            // End the dialog
             return await stepContext.EndDialogAsync(cancellationToken: cancellationToken);
         }
     }
