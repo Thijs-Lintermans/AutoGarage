@@ -12,13 +12,11 @@ namespace CoreBot.Models
         {
             try
             {
-                // Haal alle tijdslots op
                 var timeSlots = await ApiService<List<TimeSlot>>.GetAsync("timeslots");
                 return timeSlots;
             }
             catch (Exception ex)
             {
-                // Foutafhandeling
                 throw new Exception($"Error fetching time slots: {ex.Message}", ex);
             }
         }

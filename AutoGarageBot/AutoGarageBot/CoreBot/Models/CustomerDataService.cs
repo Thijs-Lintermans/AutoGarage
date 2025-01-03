@@ -24,10 +24,8 @@ namespace CoreBot.Models
             {
                 var response = await ApiService<Customer>.GetAsync($"customers/licenseplate/{licensePlate}");
 
-                // Check for 404 status and handle silently
-                if (response == null) // or response.StatusCode == HttpStatusCode.NotFound
+                if (response == null)
                 {
-                    // Return null if customer not found
                     return null;
                 }
 
@@ -35,9 +33,8 @@ namespace CoreBot.Models
             }
             catch (HttpRequestException ex)
             {
-                // Log other errors silently if needed
                 Console.WriteLine("Request error: " + ex.Message);
-                return null;  // Ensure a return value is provided even if there's an exception
+                return null; 
             }
         }
 
